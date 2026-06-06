@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    /* Smooth gallery off-white background */
+    background-color: #fcfcfc; 
+    color: #0f172a;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+    letter-spacing: -0.01em;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+  }
+}
+
+/* Premium micro-rounded layout card bounding box */
+.client-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+}
+
+/* Custom crisp inputs */
+input, button {
+  border-radius: 4px !important;
+}
