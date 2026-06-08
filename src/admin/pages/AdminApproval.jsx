@@ -285,7 +285,7 @@ export default function AdminApproval({ onNavigateBack }) {
       />
 
       <footer className="w-full border-t border-slate-200/60 bg-white py-2 text-center text-[9px] font-bold text-slate-400 tracking-wider font-mono uppercase px-4 shrink-0">
-        Veritas Intranet School Administration Core Layer
+        StartriteIntranet School Administration Core Layer
       </footer>
 
     </div>

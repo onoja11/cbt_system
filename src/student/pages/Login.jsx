@@ -24,7 +24,7 @@ export default function Login({ onLoginSuccess }) {
       <div className="w-full max-w-7xl mx-auto flex justify-between items-center py-2 border-b border-slate-200/60">
         <div className="flex items-center gap-2">
           <CircleDot className="w-3.5 h-3.5 text-slate-900 animate-pulse" />
-          <span className="text-[10px] font-bold tracking-wider text-slate-900 uppercase">Veritas CBT Portal</span>
+          <span className="text-[10px] font-bold tracking-wider text-slate-900 uppercase">StartriteCBT Portal</span>
         </div>
         <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest font-mono">LAN // CONNECTED</span>
       </div>

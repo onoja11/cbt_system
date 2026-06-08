@@ -92,7 +92,7 @@ export default function AdminLiveMonitor({ onNavigateBack, selectedSessionInfo }
       </main>
 
       <footer className="w-full border-t border-slate-200/60 bg-white py-2 text-center text-[9px] font-bold text-slate-400 tracking-wider font-mono uppercase">
-        Veritas Intranet Master Surveillance Surveillance Layer
+        StartriteIntranet Master Surveillance Surveillance Layer
       </footer>
 
     </div>

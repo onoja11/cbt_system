@@ -136,7 +136,7 @@ export default function AdminRecordsArchive({ onNavigateBack }) {
 
       {/* Static Footer */}
       <footer className="w-full border-t border-slate-200/60 bg-white py-2 text-center text-[9px] font-bold text-slate-400 tracking-wider font-mono uppercase shrink-0 px-4">
-        Veritas Intranet Institutional Ledger Systems Archive Core Layer
+        StartriteIntranet Institutional Ledger Systems Archive Core Layer
       </footer>
 
     </div>

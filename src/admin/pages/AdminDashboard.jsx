@@ -24,7 +24,7 @@ export default function AdminDashboard({ onNavigateToApproval, onNavigateToClass
           <div className="flex items-center gap-3 w-full sm:w-auto">
             <div className="w-9 h-9 bg-white text-slate-950 font-black text-xs flex items-center justify-center rounded-sm shrink-0">ADM</div>
             <div className="truncate">
-              <h1 className="text-xs font-black uppercase tracking-wider truncate">Veritas Command Center</h1>
+              <h1 className="text-xs font-black uppercase tracking-wider truncate">StartriteCommand Center</h1>
               <p className="text-[10px] font-bold text-slate-400 uppercase font-mono tracking-tight truncate">Institutional Operator System</p>
             </div>
           </div>
@@ -115,7 +115,7 @@ export default function AdminDashboard({ onNavigateToApproval, onNavigateToClass
       </main>
 
       <footer className="w-full border-t border-slate-200/60 bg-white py-2 text-center text-[9px] font-bold text-slate-400 tracking-wider font-mono uppercase px-4 shrink-0">
-        Veritas Intranet Executive Security Systems
+        StartriteIntranet Executive Security Systems
       </footer>
 
       {/* ========================================================================= */}

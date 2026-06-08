@@ -83,7 +83,7 @@ export default function Lobby({ student, onStartExam, examDetails = { title: "Co
       </main>
 
       <div className="w-full text-center py-2">
-        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-mono">Veritas Unified Campus Environment Core</span>
+        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-mono">StartriteUnified Campus Environment Core</span>
       </div>
 
     </div>

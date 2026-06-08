@@ -103,7 +103,7 @@ export default function App() {
             
             <div className="text-center space-y-1.5">
               <div className="w-12 h-12 bg-slate-950 text-white font-black text-sm flex items-center justify-center rounded-lg mx-auto shadow-md font-mono">VTS</div>
-              <h2 className="text-sm font-black text-slate-950 uppercase tracking-wider pt-2">Veritas Intranet Access Portal</h2>
+              <h2 className="text-sm font-black text-slate-950 uppercase tracking-wider pt-2">StartriteIntranet Access Portal</h2>
               <p className="text-[10px] font-bold text-slate-400 font-mono uppercase tracking-tight">LAN Node Workstation Connectivity Authenticator</p>
             </div>
 
