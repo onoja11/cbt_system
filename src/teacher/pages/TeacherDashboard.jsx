@@ -291,18 +291,18 @@ export default function TeacherDashboard({
                 <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5 tracking-wide">Terminating session closes all active multi-class workloads dashboards.</p>
               </div>
             </div>
-            <div className="flex gap-2 w-full sm:w-auto font-sans">
+            <div className="flex gap-6 w-full sm:w-auto font-sans">
               <button 
                 onClick={() => setShowLogoutDrawer(false)}
-                className="flex-1 sm:flex-none px-4 py-2 border border-slate-200 hover:bg-slate-50 text-xs font-bold uppercase tracking-wider rounded cursor-pointer transition-all"
+                className="flex-1 sm:flex-none px-8 border border-slate-200 hover:bg-slate-50 text-xs font-bold uppercase tracking-wider rounded cursor-pointer transition-all"
               >
-                Cancel Audit
+                Cancel 
               </button>
               <button 
                 onClick={onLogOut}
-                className="flex-1 sm:flex-none px-5 py-2.5 bg-slate-950 hover:bg-slate-900 text-white text-xs font-bold uppercase tracking-wider rounded shadow-md cursor-pointer transition-all font-mono"
+                className="flex-1 sm:flex-none px-8 py-2.5 bg-slate-950 hover:bg-slate-900 text-white text-xs font-bold uppercase tracking-wider rounded shadow-md cursor-pointer transition-all font-mono"
               >
-                KILL_SESSION_NODE
+                Logout
               </button>
             </div>
           </div>

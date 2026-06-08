@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
-import { Shield, FileText, Activity, Folder, Users, Monitor, ChevronRight, Radio, CheckCircle, Clock, AlertTriangle, LogOut, ShieldAlert } from 'lucide-react';
+import { Shield, FileText, Activity, Folder, CheckCircle, Monitor, ChevronRight, Radio, Clock, AlertTriangle, LogOut, ShieldAlert } from 'lucide-react';
 
-export default function AdminDashboard({ onNavigateToApproval, onNavigateToClasses, onNavigateToLiveSurveillance, onLogOut }) {
-  // 💡 STATE FOR SYSTEM LOGOUT DRAWER INTERACTION
+export default function AdminDashboard({ onNavigateToApproval, onNavigateToClasses, onNavigateToArchive, onNavigateToLiveSurveillance, onLogOut }) {
+  // 💡 STATE FOR SLIDE-UP LOGOUT DRAWER INTERACTION
   const [showLogoutDrawer, setShowLogoutDrawer] = useState(false);
 
   const [systemStats] = useState({
     pendingVettingSlips: 3,
-    runningExamsLive: 2,
     connectedTerminalsNode: 84
   });
 
@@ -17,22 +16,23 @@ export default function AdminDashboard({ onNavigateToApproval, onNavigateToClass
   ]);
 
   return (
-    <div className="min-h-screen bg-[#fcfcfc] flex flex-col justify-between select-none font-sans text-slate-900 relative overflow-hidden">
+    <div className="min-h-screen bg-[#fcfcfc] flex flex-col justify-between select-none font-sans text-slate-900 relative overflow-hidden w-full">
       
-      <header className="w-full bg-slate-950 text-white px-6 py-4 sticky top-0 z-50 shadow-md">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-white text-slate-950 font-black text-xs flex items-center justify-center rounded-sm">ADM</div>
-            <div>
-              <h1 className="text-xs font-black uppercase tracking-wider">Veritas Command Center</h1>
-              <p className="text-[10px] font-bold text-slate-400 uppercase font-mono tracking-tight">Institutional Operator System</p>
+      {/* EXECUTIVE CONTROL HEADER BANNER */}
+      <header className="w-full bg-slate-950 text-white px-4 md:px-6 py-4 sticky top-0 z-50 shadow-md">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 w-full">
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <div className="w-9 h-9 bg-white text-slate-950 font-black text-xs flex items-center justify-center rounded-sm shrink-0">ADM</div>
+            <div className="truncate">
+              <h1 className="text-xs font-black uppercase tracking-wider truncate">Veritas Command Center</h1>
+              <p className="text-[10px] font-bold text-slate-400 uppercase font-mono tracking-tight truncate">Institutional Operator System</p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="text-[9px] font-mono font-bold text-emerald-400 bg-emerald-950/50 border border-emerald-900/60 px-2.5 py-1 rounded-xs uppercase">● SERVER RUNNING</span>
+          <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-800">
+            <span className="text-[9px] font-mono font-bold text-emerald-400 bg-emerald-950/50 border border-emerald-900/60 px-2 py-0.5 rounded-sm shrink-0">● SERVER ACTIVE</span>
             <button 
               onClick={() => setShowLogoutDrawer(true)} 
-              className="p-1.5 hover:bg-slate-900 border border-slate-800 rounded text-slate-400 hover:text-white cursor-pointer transition-all active:scale-[0.95]"
+              className="p-1.5 hover:bg-slate-900 border border-slate-800 rounded text-slate-400 hover:text-white cursor-pointer transition-all shrink-0 active:scale-[0.95]"
               title="Terminate Admin Token"
             >
               <LogOut className="w-4 h-4 text-rose-400" />
@@ -41,57 +41,71 @@ export default function AdminDashboard({ onNavigateToApproval, onNavigateToClass
         </div>
       </header>
 
-      <main className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-6 space-y-6 my-auto">
+      <main className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-6 space-y-6 flex flex-col justify-start">
         
-        {/* EXECUTIVE CARD COMMAND TIER */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 font-mono">
-          <div onClick={onNavigateToClasses} className="p-5 bg-white border border-slate-200 hover:border-slate-900 rounded-xl flex items-center justify-between shadow-3xs cursor-pointer group transition-all">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-slate-50 border rounded-lg flex items-center justify-center text-slate-900 group-hover:bg-slate-950 group-hover:text-white transition-all"><Folder className="w-5 h-5" /></div>
-              <div><span className="text-[9px] font-sans font-bold text-slate-400 uppercase tracking-wider block">School Register</span><p className="text-xs font-black text-slate-950 mt-0.5">Class Directories Folder</p></div>
+        {/* EXECUTIVE CARD COMMAND TIER (4-Column fluid brutalist layout) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-mono w-full shrink-0">
+          
+          {/* Card 1: Register */}
+          <div onClick={onNavigateToClasses} className="p-4 bg-white border border-slate-200 hover:border-slate-900 rounded-xl flex items-center justify-between shadow-3xs cursor-pointer group transition-all w-full">
+            <div className="flex items-center gap-3 truncate">
+              <div className="w-9 h-9 bg-slate-50 border rounded-lg flex items-center justify-center text-slate-900 group-hover:bg-slate-950 group-hover:text-white transition-all shrink-0"><Folder className="w-4 h-4" /></div>
+              <div className="truncate"><span className="text-[9px] font-sans font-bold text-slate-400 uppercase block tracking-wider">School Register</span><p className="text-xs font-black text-slate-950 mt-0.5 truncate">Class Folders</p></div>
             </div>
-            <ChevronRight className="w-4 h-4 text-slate-300 group-hover:translate-x-0.5 group-hover:text-slate-950 transition-all" />
+            <ChevronRight className="w-3.5 h-3.5 text-slate-300 group-hover:translate-x-0.5 group-hover:text-slate-950 transition-all shrink-0" />
           </div>
 
-          <div onClick={onNavigateToApproval} className="p-5 bg-white border border-slate-200 hover:border-amber-500 rounded-xl flex items-center justify-between shadow-3xs cursor-pointer group transition-all">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-amber-50 border border-amber-100 rounded-lg flex items-center justify-center text-amber-600 group-hover:bg-amber-500 group-hover:text-white transition-all"><FileText className="w-5 h-5" /></div>
-              <div><span className="text-[9px] font-sans font-bold text-slate-400 uppercase tracking-wider block">Audits</span><p className="text-xs font-black text-amber-600 mt-0.5">{systemStats.pendingVettingSlips} Slips Pending</p></div>
+          {/* Card 2: Vetting Audits */}
+          <div onClick={onNavigateToApproval} className="p-4 bg-white border border-slate-200 hover:border-amber-500 rounded-xl flex items-center justify-between shadow-3xs cursor-pointer group transition-all w-full">
+            <div className="flex items-center gap-3 truncate">
+              <div className="w-9 h-9 bg-amber-50 border border-amber-100 rounded-lg flex items-center justify-center text-amber-600 group-hover:bg-amber-500 group-hover:text-white transition-all shrink-0"><FileText className="w-4 h-4" /></div>
+              <div className="truncate"><span className="text-[9px] font-sans font-bold text-slate-400 uppercase block tracking-wider">Audits Queue</span><p className="text-xs font-black text-amber-600 mt-0.5 truncate">{systemStats.pendingVettingSlips} Slips Pending</p></div>
             </div>
-            <ChevronRight className="w-4 h-4 text-slate-300 group-hover:translate-x-0.5 group-hover:text-amber-500 transition-all" />
+            <ChevronRight className="w-3.5 h-3.5 text-slate-300 group-hover:translate-x-0.5 group-hover:text-amber-500 transition-all shrink-0" />
           </div>
 
-          <div className="p-5 bg-white border border-slate-200 rounded-xl flex items-center gap-4 shadow-3xs">
-            <div className="w-10 h-10 bg-emerald-50 border border-emerald-100 rounded-lg flex items-center justify-center text-emerald-600"><Activity className="w-5 h-5 animate-pulse" /></div>
-            <div><span className="text-[9px] font-sans font-bold text-slate-400 uppercase tracking-wider block">Client Core Mesh</span><p className="text-xs font-black text-slate-950 mt-0.5">{systemStats.connectedTerminalsNode} Active Nodes</p></div>
+          {/* Card 3: Master Archives Vault */}
+          <div onClick={onNavigateToArchive} className="p-4 bg-white border border-slate-200 hover:border-blue-600 rounded-xl flex items-center justify-between shadow-3xs cursor-pointer group transition-all w-full">
+            <div className="flex items-center gap-3 truncate">
+              <div className="w-9 h-9 bg-blue-50 border border-blue-100 rounded-lg flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-all shrink-0"><CheckCircle className="w-4 h-4" /></div>
+              <div className="truncate"><span className="text-[9px] font-sans font-bold text-slate-400 uppercase block tracking-wider">Exams Vault</span><p className="text-xs font-black text-blue-600 mt-0.5 truncate">Historical Logs</p></div>
+            </div>
+            <ChevronRight className="w-3.5 h-3.5 text-slate-300 group-hover:translate-x-0.5 group-hover:text-blue-600 transition-all shrink-0" />
           </div>
+
+          {/* Card 4: Network Node Mesh */}
+          <div className="p-4 bg-white border border-slate-200 rounded-xl flex items-center gap-3 shadow-3xs w-full">
+            <div className="w-9 h-9 bg-emerald-50 border border-emerald-100 rounded-lg flex items-center justify-center text-emerald-600 shrink-0"><Activity className="w-4 h-4 animate-pulse" /></div>
+            <div className="truncate"><span className="text-[9px] font-sans font-bold text-slate-400 uppercase block tracking-wider">Client Core Mesh</span><p className="text-xs font-black text-slate-950 mt-0.5 truncate">{systemStats.connectedTerminalsNode} Active Nodes</p></div>
+          </div>
+
         </div>
 
-        {/* ACTIVE ROOMS TELEMETRY GRID DISPLAY */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs h-[340px] flex flex-col overflow-hidden">
-          <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-4 shrink-0">
+        {/* ACTIVE ROOMS SURVEILLANCE FEED VIEWPORT */}
+        <div className="bg-white border border-slate-200 rounded-xl p-4 md:p-5 shadow-2xs min-h-[300px] lg:h-[360px] flex flex-col overflow-hidden w-full">
+          <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-4 shrink-0 w-full">
             <Radio className="w-4 h-4 text-emerald-500 animate-pulse" />
-            <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider">Live Examination Surveillance Monitor Channels</span>
+            <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider">Active Room Surveillance Monitor Channels</span>
           </div>
 
-          <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+          <div className="flex-1 overflow-y-auto space-y-3 pr-1 w-full pb-1">
             {liveSessions.map((session) => (
-              <div key={session.id} className="p-4 border border-slate-100 rounded-lg bg-slate-50/40 hover:bg-slate-50 hover:border-slate-300 transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <span className="px-1.5 py-0.5 text-[8px] font-mono font-bold bg-emerald-50 text-emerald-700 rounded-sm border border-emerald-100 animate-pulse">LIVE</span>
-                    <h4 className="text-xs font-black text-slate-950 uppercase tracking-tight">{session.subject} — {session.arm}</h4>
+              <div key={session.id} className="p-4 border border-slate-100 rounded-lg bg-slate-50/40 hover:bg-slate-50 hover:border-slate-300 transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 w-full">
+                <div className="space-y-1 w-full sm:w-auto truncate">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-1.5 py-0.5 text-[8px] font-mono font-bold bg-emerald-50 text-emerald-700 rounded-sm border border-emerald-100 tracking-wide shrink-0">LIVE</span>
+                    <h4 className="text-xs md:text-sm font-black text-slate-950 uppercase tracking-tight truncate">{session.subject} — {session.arm}</h4>
                   </div>
-                  <p className="text-[11px] font-medium text-slate-400 font-mono uppercase">Invigilator: <span className="font-sans font-bold text-slate-700">{session.supervisor}</span></p>
+                  <p className="text-[11px] font-medium text-slate-400 font-mono uppercase truncate">Invigilator: <span className="font-sans font-bold text-slate-700 text-xs">{session.supervisor}</span></p>
                 </div>
 
-                <div className="flex items-center gap-4 shrink-0 font-mono text-[11px] font-bold">
+                <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-50 shrink-0 font-mono text-[11px] font-bold">
                   {session.alertsCount > 0 ? (
-                    <span className="flex items-center gap-1 text-rose-600 bg-rose-50 border border-rose-100 px-2 py-0.5 rounded uppercase"><AlertTriangle className="w-3.5 h-3.5" /> {session.alertsCount} Breaches</span>
+                    <span className="flex items-center gap-1 text-rose-600 bg-rose-50 border border-rose-100 px-2 py-0.5 rounded uppercase tracking-wide shrink-0"><AlertTriangle className="w-3.5 h-3.5" /> {session.alertsCount} Breaches</span>
                   ) : (
-                    <span className="flex items-center gap-1 text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded uppercase"><CheckCircle className="w-3.5 h-3.5" /> Secure</span>
+                    <span className="flex items-center gap-1 text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded uppercase tracking-wide shrink-0"><CheckCircle className="w-3.5 h-3.5" /> Secure</span>
                   )}
-                  <button onClick={() => onNavigateToLiveSurveillance(session)} className="px-3 py-1.5 bg-slate-950 hover:bg-slate-800 text-white text-[10px] uppercase font-bold tracking-wider rounded-sm cursor-pointer transition-all active:scale-[0.96]">Infiltrate</button>
+                  <button onClick={() => onNavigateToLiveSurveillance(session)} className="px-3 py-1.5 bg-slate-950 hover:bg-slate-800 text-white text-[10px] uppercase font-bold tracking-wider rounded-sm cursor-pointer shadow-3xs shrink-0 transition-all">Infiltrate</button>
                 </div>
               </div>
             ))}
@@ -100,36 +114,26 @@ export default function AdminDashboard({ onNavigateToApproval, onNavigateToClass
 
       </main>
 
-      <footer className="w-full border-t border-slate-200/60 bg-white py-2 text-center text-[9px] font-bold text-slate-400 tracking-wider font-mono uppercase">Veritas Intranet Executive Security Systems</footer>
+      <footer className="w-full border-t border-slate-200/60 bg-white py-2 text-center text-[9px] font-bold text-slate-400 tracking-wider font-mono uppercase px-4 shrink-0">
+        Veritas Intranet Executive Security Systems
+      </footer>
 
       {/* ========================================================================= */}
-      {/* 💡 PREMIUM SLIDE-UP LOGOUT DRAWER OVERLAY                                 */}
+      {/* 💡 THE COOL LOGOUT SLIDING DRAWER MODAL                                   */}
       {/* ========================================================================= */}
-      <div className={`fixed inset-0 bg-slate-950/20 backdrop-blur-xs z-[10000] transition-all duration-300 flex flex-col justify-end ${showLogoutDrawer ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
-        <div className={`w-full bg-white border-t-2 border-rose-600 p-6 shadow-2xl transition-all duration-300 transform font-mono ${showLogoutDrawer ? 'translate-y-0' : 'translate-y-full'}`}>
-          <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 select-none">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-rose-50 text-rose-600 border border-rose-100 rounded-lg flex items-center justify-center shrink-0">
-                <ShieldAlert className="w-5 h-5" />
-              </div>
+      <div className={`fixed inset-0 bg-slate-950/20 backdrop-blur-xs z-[10000] transition-all duration-300 flex flex-col justify-end w-full ${showLogoutDrawer ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+        <div className={`w-full bg-white border-t-2 border-rose-600 p-4 md:p-6 shadow-2xl transition-all duration-300 transform font-mono ${showLogoutDrawer ? 'translate-y-0' : 'translate-y-full'}`}>
+          <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-4 w-full select-none">
+            <div className="flex items-center gap-3 w-full md:w-auto">
+              <div className="w-10 h-10 bg-rose-50 text-rose-600 border border-rose-100 rounded-lg flex items-center justify-center shrink-0"><ShieldAlert className="w-5 h-5" /></div>
               <div>
-                <h3 className="text-xs font-black text-slate-950 uppercase tracking-tight font-sans">Revoke Administrative Token Authorization?</h3>
-                <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5 tracking-wide">Terminating session closes all active network surveillance logs instantly.</p>
+                <h3 className="text-xs font-black text-slate-950 uppercase tracking-tight font-sans">Revoke Admin Access Token?</h3>
+                <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5 tracking-wide font-mono">Closing terminates administrative inspection control sessions immediately.</p>
               </div>
             </div>
-            <div className="flex gap-2 w-full sm:w-auto font-sans">
-              <button 
-                onClick={() => setShowLogoutDrawer(false)}
-                className="flex-1 sm:flex-none px-4 py-2 border border-slate-200 hover:bg-slate-50 text-xs font-bold uppercase tracking-wider rounded cursor-pointer transition-all"
-              >
-                Cancel Audit
-              </button>
-              <button 
-                onClick={onLogOut}
-                className="flex-1 sm:flex-none px-5 py-2.5 bg-slate-950 hover:bg-slate-900 text-white text-xs font-bold uppercase tracking-wider rounded shadow-md cursor-pointer transition-all font-mono"
-              >
-                KILL_SERVER_ACCESS_TOKEN
-              </button>
+            <div className="flex gap-2 w-full md:w-auto font-sans border-t md:border-t-0 pt-2 md:pt-0 border-slate-100">
+              <button onClick={() => setShowLogoutDrawer(false)} className="flex-1 md:flex-none px-4 py-2 border border-slate-200 hover:bg-slate-50 text-xs font-bold uppercase rounded cursor-pointer transition-all text-center">Cancel</button>
+              <button onClick={onLogOut} className="flex-1 md:flex-none px-5 py-2.5 bg-slate-950 hover:bg-slate-900 text-white text-xs font-bold uppercase rounded shadow-md cursor-pointer font-mono text-center">Logout</button>
             </div>
           </div>
         </div>

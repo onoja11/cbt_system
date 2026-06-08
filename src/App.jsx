@@ -15,7 +15,8 @@ import ScriptReview from './teacher/pages/ScriptReview';
 
 // 📂 INSTITUTIONAL ADMINISTRATION PANELS
 import AdminDashboard from './admin/pages/AdminDashboard';
-import AdminClassesDirectory from './admin/pages/AdminClassesDirectory'; // 💡 Isolated separate directory page
+import AdminClassesDirectory from './admin/pages/AdminClassesDirectory';
+import AdminRecordsArchive from './admin/pages/AdminRecordsArchive'; // 💡 Connected
 import AdminLiveMonitor from './admin/pages/AdminLiveMonitor';
 import AdminApprovalDesk from './admin/pages/AdminApproval';
 import AdminGradebookView from './admin/pages/AdminGradebookView';
@@ -91,7 +92,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#fcfcfc] antialiased">
+    <div className="min-h-screen bg-[#fcfcfc] antialiased w-full overflow-x-hidden">
       
       {/* ========================================================================= */}
       {/* 🔐 SCREEN 1: UNIVERSAL AUTHORIZATION LOCK GATE LAYER                       */}
@@ -109,7 +110,7 @@ export default function App() {
             <form onSubmit={handleSystemLogin} className="space-y-4">
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">User Identity ID Code / Email</label>
-                <input type="text" name="identifier" placeholder="e.g., STEPHEN, TEACHER, or ADMIN" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-900 rounded focus:outline-none focus:bg-white focus:border-slate-950 transition-all uppercase" />
+                <input type="text" name="identifier" placeholder="e.g., STEPHEN, TEACHER, or ADMIN" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-900 rounded focus:outline-none focus:bg-white focus:border-slate-950 transition-all uppercase font-mono" />
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Security Access Password</label>
@@ -144,7 +145,7 @@ export default function App() {
       )}
 
       {/* ========================================================================= */}
-      {/* 🛠️ TEACHER ROUTING SPACES                                                */}
+      {/*  TEACHER ROUTING SPACES                                                */}
       {/* ========================================================================= */}
       {currentDomain === 'teacher_dash' && (
         <TeacherDashboard 
@@ -166,12 +167,13 @@ export default function App() {
       {currentDomain === 'teacher_review_scripts' && <ScriptReview selectedAssessmentInfo={selectedAssessmentInfo} onNavigateBack={handleReturnToFolderDashboard} />}
 
       {/* ========================================================================= */}
-      {/* 🏛️ ADMIN OVERSIGHT ROUTING SPACES                                         */}
+      {/*  ADMIN OVERSIGHT ROUTING SPACES                                         */}
       {/* ========================================================================= */}
       {currentDomain === 'admin_dash' && (
         <AdminDashboard 
           onNavigateToApproval={() => setCurrentDomain('admin_approval')}
           onNavigateToClasses={() => setCurrentDomain('admin_classes_directory')}
+          onNavigateToArchive={() => setCurrentDomain('admin_records_archive')} // 💡 Synced
           onNavigateToLiveSurveillance={(session) => {
             setSelectedLiveSession(session);
             setCurrentDomain('admin_live_surveillance');
@@ -188,6 +190,10 @@ export default function App() {
           }}
           onNavigateBack={() => setCurrentDomain('admin_dash')} 
         />
+      )}
+
+      {currentDomain === 'admin_records_archive' && (
+        <AdminRecordsArchive onNavigateBack={() => setCurrentDomain('admin_dash')} />
       )}
 
       {currentDomain === 'admin_approval' && (
