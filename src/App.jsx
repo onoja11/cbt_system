@@ -14,7 +14,6 @@ import { getAllUnsyncedAnswers, clearSyncedAnswers } from './core/offlineDb';
 import AdminDashboard from './admin/pages/AdminDashboard';
 import AdminApproval from './admin/pages/AdminApproval';
 import AdminClassesDirectory from './admin/pages/AdminClassesDirectory';
-import AdminGradebookView from './admin/pages/AdminGradebookView';
 import AdminLiveMonitor from './admin/pages/AdminLiveMonitor';
 import AdminRecordsArchive from './admin/pages/AdminRecordsArchive';
 import ExamScheduler from './admin/pages/ExamScheduler';
@@ -204,7 +203,6 @@ export default function App() {
         />
       )}
 
-      {currentDomain === 'admin_gradebook' && <AdminGradebookView onNavigateBack={() => navigateToDomainContext('admin_dash')} />}
 
       {/* 5. INSTRUCTOR CONTROL PANEL DECK */}
       {currentDomain === 'teacher_dash' && (
