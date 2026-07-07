@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { ArrowLeft, FileSpreadsheet, ImageIcon, Upload, X, RotateCcw, Lock, Edit3, AlertTriangle, Loader2, MessageSquare } from 'lucide-react';
+import { ArrowLeft, FileSpreadsheet, ImageIcon, Upload, X, RotateCcw, Lock, Edit3, AlertTriangle, Loader2, MessageSquare, CheckCircle2 } from 'lucide-react';
 import { apiRequest } from '../../core/api';
 
 // Decoupled Module Components
@@ -17,7 +17,7 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
   const [subjectInfo, setSubjectInfo] = useState('');
   const [categoryInfo, setCategoryInfo] = useState('');
   const [assessmentStatus, setAssessmentStatus] = useState('draft');
-  const [feedbackComment, setFeedbackComment] = useState(''); // 💡 ADDED: State tracking for moderator adjustments notes
+  const [feedbackComment, setFeedbackComment] = useState(''); 
   const [isLoading, setIsLoading] = useState(true);
 
   const [sectionRules] = useState({
@@ -57,7 +57,6 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
   // 🛡️ SYSTEM UNLOCK GUARD
   const resolvedStatus = useMemo(() => cleanString(assessmentStatus), [assessmentStatus, cleanString]);
   
-  // 💡 Note: Assessments with 'Rejected' status remain UNLOCKED so teachers can apply updates
   const isLocked = useMemo(() => {
     return [
       'pending_admin', 'pending admin', 'approved', 
@@ -101,8 +100,7 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
         const targetModelStatus = data.assessment_status || data.status_label || data.assessment?.status || 'draft';
         setAssessmentStatus(targetModelStatus);
         
-        // 💡 ADDED: Capture moderator feedback values out of the response payload array map records
-        const feedback = data.feedback_comment || data.feedback || data.assessment?.feedback_comment || 'fff  ';
+        const feedback = data.feedback_comment || data.feedback || data.assessment?.feedback_comment || '';
         setFeedbackComment(feedback);
         
         if (data.questions && data.questions.length > 0) {
@@ -203,12 +201,13 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
   const triggerNotificationAlert = (msg) => {
     setSuccessMessage(msg);
     setShowSuccessNotification(true);
-    setTimeout(() => setShowSuccessNotification(false), 2500);
+    setTimeout(() => setShowSuccessNotification(false), 4000);
   };
 
   const handleBulkCSVExecution = async () => {
     if (!csvFile || isLocked || !targetAssessmentId) return;
     setIsUploadingBulk(true);
+    setModalType(null); // Close confirmation drawer map instantly
 
     const formData = new FormData();
     formData.append('csv_file', csvFile);
@@ -217,13 +216,9 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
     });
 
     try {
-      const token = localStorage.getItem('intranet_bearer_token');
-      const response = await fetch(`${baseServerDomain}/api/v1/teacher/assessments/${targetAssessmentId}/questions/bulk`, {
+      const response = await apiRequest(`api/v1/teacher/assessments/${targetAssessmentId}/questions/bulk`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json'
-        },
+        headers: {}, 
         body: formData
       });
 
@@ -235,7 +230,8 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
         setCsvPreviewQuestions([]);
         setIngestionMode('manual');
         await refreshQuestionBlueprint();
-        triggerNotificationAlert(data.message);
+        // 🎯 DYNAMIC: Renders explicit success notifications derived out of database transactions report keys
+        triggerNotificationAlert(data.message || `Success: ${csvPreviewQuestions.length} items mapped neatly to the platform ledger.`);
       } else {
         setErrorModal({
           isOpen: true,
@@ -245,15 +241,19 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
       }
     } catch (error) {
       console.error(error);
+      setErrorModal({
+        isOpen: true,
+        title: 'Network Communication Error',
+        message: 'The cloud container dropped connection during parsing. Please check file formatting bounds.'
+      });
     } finally {
       setIsUploadingBulk(false);
-      setModalType(null);
     }
   };
 
   const handleManualFormExecution = async () => {
     if (isLocked || !targetAssessmentId) return;
-    const token = localStorage.getItem('intranet_bearer_token');
+    setModalType(null);
     const formData = new FormData();
 
     formData.append('type', activeSectionTab === 'theory' ? 'Theory' : 'Objective');
@@ -276,16 +276,13 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
 
     try {
       const isEditSequence = activeQuestionId && !String(activeQuestionId).startsWith('temp_');
-      const endpointUrl = isEditSequence 
-        ? `${baseServerDomain}/api/v1/teacher/assessments/${targetAssessmentId}/questions/${activeQuestionId}`
-        : `${baseServerDomain}/api/v1/teacher/assessments/${targetAssessmentId}/questions`;
+      const endpointsPath = isEditSequence 
+        ? `api/v1/teacher/assessments/${targetAssessmentId}/questions/${activeQuestionId}`
+        : `api/v1/teacher/assessments/${targetAssessmentId}/questions`;
 
-      const response = await fetch(endpointUrl, {
+      const response = await apiRequest(endpointsPath, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json'
-        },
+        headers: {},
         body: formData
       });
 
@@ -304,19 +301,17 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
       }
     } catch (error) {
       console.error(error);
-    } finally {
-      setModalType(null);
     }
   };
 
   const executeDeletePipeline = async () => {
     if (!deleteTargetId || isLocked || !targetAssessmentId) return;
+    setModalType(null);
 
     if (String(deleteTargetId).startsWith('temp_')) {
       const remaining = questionBank.filter(q => q.id !== deleteTargetId);
       setQuestionBank(remaining);
       initializeEmptyFormState();
-      setModalType(null);
       setDeleteTargetId(null);
       return;
     }
@@ -331,8 +326,7 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
       }
     } catch (error) { 
       console.error(error); 
-    } {
-      setModalType(null);
+    } finally {
       setDeleteTargetId(null);
     }
   };
@@ -362,6 +356,23 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
       setOptions([{ text: 'Option A', isCorrect: true }, { text: 'Option B', isCorrect: false }]);
     } else {
       setTheoryRubric('');
+    }
+  };
+
+  const handleLoadQuestionForEditing = (q) => {
+    if (!q) return;
+    setActiveQuestionId(q.id);
+    setQuestionText(q.text);
+    setQuestionScore(q.score);
+    if (manualImagePreview && manualImagePreview.startsWith('blob:')) {
+      URL.revokeObjectURL(manualImagePreview);
+    }
+    setManualImageFile(null);
+    setManualImagePreview(q.imageUrl ? `${baseServerDomain}${q.imageUrl}` : ''); 
+    if (cleanString(q.type) === 'objective') {
+      setOptions(q.options || [{ text: '', isCorrect: true }]);
+    } else {
+      setTheoryRubric(q.rubric || '');
     }
   };
 
@@ -432,8 +443,27 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
   }, [activeSectionTab, activeQuestionIndex, filteredBankList]);
 
   return (
-    <div className="min-h-screen bg-[#FAF9FA] flex flex-col justify-between text-[#2A1A63] font-sans selection:bg-[#9A87A9]/30 w-full overflow-x-hidden">
+    <div className="min-h-screen bg-[#FAF9FA] flex flex-col justify-between text-[#2A1A63] font-sans selection:bg-[#9A87A9]/30 w-full overflow-x-hidden relative">
       
+      {/* 🎯 HIGH QUALITY INTERACTIVE BULK LOADING OVERLAY */}
+      {isUploadingBulk && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-[50000] flex flex-col justify-center items-center text-center font-mono animate-fadeIn p-4">
+          <div className="bg-white border border-[#9A87A9]/40 p-8 rounded-2xl max-w-sm w-full shadow-2xl space-y-4">
+            <div className="relative w-12 h-12 flex items-center justify-center mx-auto">
+              <Loader2 className="w-10 h-10 animate-spin text-[#2A1A63]" />
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600 absolute" />
+            </div>
+            <div>
+              <h4 className="text-xs font-black uppercase text-slate-950 tracking-wider">Parsing Dataset Sheets...</h4>
+              <p className="text-[10px] text-[#9A87A9] font-bold uppercase mt-1">Transmitting Matrix to Render Container</p>
+              <p className="text-xs text-slate-500 font-sans font-medium leading-relaxed mt-4">
+                Please hold on. The server is validating structure columns alignment rules, matching image keys handles, and compiling item tokens into your question bank portfolio. Do not refresh.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* HEADER CONTROLS VAULT */}
       <header className="w-full bg-white border-b border-[#9A87A9]/30 px-4 md:px-6 py-4 sticky top-0 z-40 shadow-3xs">
         <div className="max-w-7xl mx-auto flex justify-between items-center w-full">
@@ -466,7 +496,7 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
         </div>
       </header>
 
-      {/* 🎯 ADDED: DYNAMIC MODERATOR ADJUSTMENT NOTIFICATIONS FEED BANNER */}
+      {/* DYNAMIC MODERATOR ADJUSTMENT NOTIFICATIONS FEED BANNER */}
       {resolvedStatus === 'rejected' && feedbackComment && (
         <div className="w-full bg-rose-50 border-b border-rose-200 py-3.5 px-4 md:px-6 shadow-inner animate-fadeIn text-left shrink-0">
           <div className="max-w-7xl mx-auto flex items-start gap-3">
@@ -544,7 +574,7 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
 
                     <div className="grid grid-cols-3 gap-2 overflow-y-auto max-h-[160px] pt-1">
                       {bulkImages.map((img, idx) => (
-                        <div key={idx} className="relative border border-[#9A87A9]/20 rounded-lg p-1 bg-white text-center flex flex-col justify-between items-center h-16 shadow-3xs group">
+                        <div key={img.name || idx} className="relative border border-[#9A87A9]/20 rounded-lg p-1 bg-white text-center flex flex-col justify-between items-center h-16 shadow-3xs group">
                           <img src={URL.createObjectURL(img)} alt="attached-thumbnail" className="w-full h-8 object-contain rounded" />
                           <span className="text-[7px] font-mono font-black truncate w-full uppercase mt-1 block text-slate-500">{img.name}</span>
                           <button onClick={() => removeBulkImage(idx)} className="absolute -top-1 -right-1 p-0.5 bg-[#C62927] text-white rounded-full hover:opacity-90 shadow-sm cursor-pointer"><X className="w-2.5 h-2.5" /></button>
@@ -561,7 +591,7 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
                         disabled={isUploadingBulk}
                         className="flex-1 py-3 bg-[#2A1A63] text-white font-black text-xs uppercase tracking-wider rounded-lg shadow-md flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50 font-mono"
                       >
-                        {isUploadingBulk ? 'Processing Spreadsheets...' : 'Save Upload Sheet'}
+                        Save Upload Sheet
                       </button>
                     </div>
                   )}
@@ -776,9 +806,11 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
       )}
 
       {showSuccessNotification && (
-        <div className="fixed bottom-6 right-6 z-[9999] bg-slate-900 text-white px-4 py-3 rounded-lg shadow-xl flex items-center gap-2 font-mono text-xs uppercase tracking-wide border border-slate-800">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-          {successMessage}
+        <div className="fixed bottom-6 right-6 z-[9999] bg-slate-950/90 border border-emerald-500 text-white px-5 py-3.5 rounded-xl shadow-2xl flex items-center gap-3 font-mono text-xs uppercase tracking-wide animate-slideIn">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <div className="font-sans font-bold">
+            {successMessage}
+          </div>
         </div>
       )}
 
