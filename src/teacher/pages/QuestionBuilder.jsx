@@ -66,7 +66,9 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
   }, [resolvedStatus]);
 
   // Unified Server Domain Selection Guard
-  const baseServerDomain = window.API_BASE_URL || (window.location.hostname.includes('localhost') || window.location.hostname.includes('vercel.app') ? 'http://startrite_cbt_api.test' : 'https://startrite-api.onrender.com');
+  // const baseServerDomain = window.API_BASE_URL || (window.location.hostname.includes('localhost') || window.location.hostname.includes('vercel.app') ? 'http://startrite_cbt_api.test' : 'https://startrite-api.onrender.com');
+
+  const baseServerDomain = window.API_BASE_URL || 'https://startrite-api.onrender.com';
 
   // ⚡ FIXED: Moved targetAssessmentId calculation ABOVE the hooks that depend on it!
   const targetAssessmentId = useMemo(() => {
