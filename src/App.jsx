@@ -1,213 +1,231 @@
-import React, { useState } from 'react';
-import SecurityProvider from './core/SecurityProvider';
-
-// 📂 STUDENT APP PORTS
-import StudentLobby from './student/pages/Lobby';
-import StudentWorkspace from './student/pages/ExamWorkspace';
-
-// 📂 FACULTY ASSIGNED CORE MODULES
+import React, { useState, useEffect } from 'react';
+import Login from './shared/Login';
 import TeacherDashboard from './teacher/pages/TeacherDashboard';
-import TeacherBuilder from './teacher/pages/QuestionBuilder';
-import LiveMonitor from './teacher/pages/LiveMonitor';
-import TheoryMarking from './teacher/pages/TheoryMarking';
-import UnifiedGradebook from './teacher/pages/Gradebook';
-import ScriptReview from './teacher/pages/ScriptReview';
+import QuestionBuilder from './teacher/pages/QuestionBuilder';
+import LiveMonitor from './teacher/pages/LiveMonitor'; 
+import StudentLobby from './student/pages/StudentLobby'; 
+import ExamWorkspace from './student/pages/ExamWorkspace'; 
+import { apiRequest } from './core/api';
 
-// 📂 INSTITUTIONAL ADMINISTRATION PANELS
+// IMPORT YOUR OFFLINE STORAGE METHODS TO FORCE FLUSH ON SUBMIT
+import { getAllUnsyncedAnswers, clearSyncedAnswers } from './core/offlineDb';
+
+// ADMINISTRATIVE MASTER MODULE IMPORTS
 import AdminDashboard from './admin/pages/AdminDashboard';
+import AdminApproval from './admin/pages/AdminApproval';
 import AdminClassesDirectory from './admin/pages/AdminClassesDirectory';
-import AdminRecordsArchive from './admin/pages/AdminRecordsArchive'; // 💡 Connected
-import AdminLiveMonitor from './admin/pages/AdminLiveMonitor';
-import AdminApprovalDesk from './admin/pages/AdminApproval';
 import AdminGradebookView from './admin/pages/AdminGradebookView';
+import AdminLiveMonitor from './admin/pages/AdminLiveMonitor';
+import AdminRecordsArchive from './admin/pages/AdminRecordsArchive';
+import ExamScheduler from './admin/pages/ExamScheduler';
+
+// DYNAMIC GRADING WORKSPACE IMPORTS
+import MarkEssays from './teacher/pages/MarkEssays';
+import GradebookMatrix from './teacher/pages/GradebookMatrix';
 
 export default function App() {
-  // 🔐 THE MASTER ROUTER: App always boots directly into the authorization lock gate
-  const [currentDomain, setCurrentDomain] = useState('auth'); 
+  // MASTER INFRASTRUCTURE SYSTEM STATES
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentDomain, setCurrentDomain] = useState('login'); 
+  const [userSession, setUserSession] = useState(null);
   
-  // Active Profiles Session Cache Memory Stores
-  const [sessionUser, setSessionUser] = useState(null);
-  const [activeCourseFolder, setActiveCourseFolder] = useState(null);
-  const [selectedAssessmentInfo, setSelectedAssessmentInfo] = useState(null);
-  const [selectedLiveSession, setSelectedLiveSession] = useState(null);
-  const [selectedClassGroup, setSelectedClassGroup] = useState(null);
+  // CONTEXT RECOVERY LEDGER STORAGE PIPES
+  const [teacherFolderContext, setTeacherFolderContext] = useState(null);
+  const [selectedAssessmentId, setSelectedAssessmentId] = useState(null);
+  const [selectedAdminLiveSession, setSelectedAdminLiveSession] = useState(null);
 
-  // 💡 CENTRAL MASTER ACCOUNT REGISTRY PASSKEYS MATRIX
-  const handleSystemLogin = (e) => {
-    e.preventDefault();
-    const identifier = e.target.identifier.value.trim().toUpperCase();
-    const password = e.target.password.value;
-
-    if (!identifier || !password) {
-      alert("Please enter authorization credentials.");
-      return;
+  // Helper sanitizer to strip out event objects completely
+  const sanitizeIncomingId = (idInput) => {
+    if (!idInput) return null;
+    if (idInput && idInput.target !== undefined && typeof idInput.preventDefault === 'function') {
+      return null;
     }
-
-    // ─────────────────────────────────────────────────────────────────
-    // SCENARIO A: STUDENT TESTING PORTALS
-    // ─────────────────────────────────────────────────────────────────
-    if (identifier === 'VTS/JSS3/001' || identifier === 'STEPHEN') {
-      setSessionUser({ id: 'st_1', name: 'DUNG STEPHEN NYAM', admissionNo: 'VTS/JSS3/001', classGroup: 'Grade 9 / JSS 3A', initials: 'DS' });
-      setCurrentDomain('student_lobby');
-      return;
+    if (typeof idInput === 'object') {
+      return idInput.id || idInput.assessmentId || idInput.assessment_id || null;
     }
-    if (identifier === 'VTS/SS1/009' || identifier === 'FAITH') {
-      setSessionUser({ id: 'st_4', name: 'FAITH OCHE', admissionNo: 'VTS/SS1/009', classGroup: 'Grade 10 / SS 1 GOLD', initials: 'FO' });
-      setCurrentDomain('student_lobby');
-      return;
-    }
-
-    // ─────────────────────────────────────────────────────────────────
-    // SCENARIO B: TEACHER SYSTEM PORTAL 
-    // ─────────────────────────────────────────────────────────────────
-    if (identifier === 'TEACHER' || identifier === 'GODSWILL') {
-      setSessionUser({ name: 'Mr. Ochigbo Godswill', role: 'teacher' });
-      setCurrentDomain('teacher_dash');
-      return;
-    }
-
-    // ─────────────────────────────────────────────────────────────────
-    // SCENARIO C: ADMIN PRINCIPAL COMMAND DESK
-    // ─────────────────────────────────────────────────────────────────
-    if (identifier === 'ADMIN' || identifier === 'PRINCIPAL') {
-      setSessionUser({ name: 'Director of Studies Core', role: 'admin' });
-      setCurrentDomain('admin_dash');
-      return;
-    }
-
-    alert("ACCESS DENIED: Account ID string parameter not registered on Intranet database layer.");
+    const parsed = parseInt(idInput, 10);
+    return isNaN(parsed) ? null : parsed;
   };
 
-  const handleLogOutSystem = () => {
-    setSessionUser(null);
-    setActiveCourseFolder(null);
-    setSelectedAssessmentInfo(null);
-    setSelectedLiveSession(null);
-    setSelectedClassGroup(null);
-    setCurrentDomain('auth');
+  // 🎯 RECONCILED CONTEXT RECOVERY LEDGER LOOKUPS ON MOUNT
+  useEffect(() => {
+    const savedToken = localStorage.getItem('intranet_bearer_token');
+    const savedUser = localStorage.getItem('user_metadata');
+    const savedDomain = localStorage.getItem('active_domain_context');
+    const savedFolder = localStorage.getItem('saved_folder_context');
+    const savedAsmId = localStorage.getItem('saved_asm_id_context');
+    const savedAdminLive = localStorage.getItem('saved_admin_live_context');
+
+    if (savedToken && savedUser && savedDomain) {
+      setIsAuthenticated(true);
+      setUserSession(JSON.parse(savedUser));
+      
+      // Safety normalize string to protect route contexts
+      const normalizedDomain = savedDomain === 'admin' ? 'admin_dash' : savedDomain;
+      setCurrentDomain(normalizedDomain);
+      
+      if (savedFolder) setTeacherFolderContext(JSON.parse(savedFolder));
+      if (savedAdminLive) setSelectedAdminLiveSession(JSON.parse(savedAdminLive));
+
+      if (savedAsmId && !savedAsmId.includes('Object') && savedAsmId !== 'NaN') {
+        setSelectedAssessmentId(parseInt(savedAsmId, 10));
+      }
+    }
+  }, []);
+
+  const handleAuthSuccess = (token, domainContext, userMetadata) => {
+    const operationalDomain = domainContext === 'admin' ? 'admin_dash' : domainContext;
+
+    localStorage.setItem('intranet_bearer_token', token);
+    localStorage.setItem('user_metadata', JSON.stringify(userMetadata));
+    localStorage.setItem('active_domain_context', operationalDomain);
+    
+    setIsAuthenticated(true);
+    setUserSession(userMetadata);
+    setCurrentDomain(operationalDomain);
   };
 
-  const handleReturnToFolderDashboard = () => {
-    setCurrentDomain('teacher_dash');
+  const handleSessionTermination = () => {
+    localStorage.removeItem('intranet_bearer_token');
+    localStorage.removeItem('user_metadata');
+    localStorage.removeItem('active_domain_context');
+    localStorage.removeItem('saved_asm_id_context');
+    localStorage.removeItem('saved_admin_live_context');
+    
+    setIsAuthenticated(false);
+    setUserSession(null);
+    setTeacherFolderContext(null);
+    setSelectedAssessmentId(null);
+    setSelectedAdminLiveSession(null);
+    setCurrentDomain('login');
+  };
+
+  const handleFolderContextCacheUpdate = (folder) => {
+    setTeacherFolderContext(folder);
+    if (folder) {
+      localStorage.setItem('saved_folder_context', JSON.stringify(folder));
+    } else {
+      localStorage.removeItem('saved_folder_context');
+    }
+  };
+
+  const navigateToDomainContext = (targetDomain) => {
+    const safeDomainName = targetDomain === 'admin' ? 'admin_dash' : targetDomain;
+    setCurrentDomain(safeDomainName);
+    localStorage.setItem('active_domain_context', safeDomainName);
   };
 
   return (
-    <div className="min-h-screen bg-[#fcfcfc] antialiased w-full overflow-x-hidden">
+    <div className="w-full min-h-screen bg-[#fafafa]">
       
-      {/* ========================================================================= */}
-      {/* 🔐 SCREEN 1: UNIVERSAL AUTHORIZATION LOCK GATE LAYER                       */}
-      {/* ========================================================================= */}
-      {currentDomain === 'auth' && (
-        <div className="min-h-screen flex flex-col justify-center items-center p-4 bg-slate-50 select-none">
-          <div className="w-full max-w-sm bg-white border border-slate-200 rounded-xl p-6 md:p-8 shadow-xl space-y-6">
-            
-            <div className="text-center space-y-1.5">
-              <div className="w-12 h-12 bg-slate-950 text-white font-black text-sm flex items-center justify-center rounded-lg mx-auto shadow-md font-mono">VTS</div>
-              <h2 className="text-sm font-black text-slate-950 uppercase tracking-wider pt-2">StartriteIntranet Access Portal</h2>
-              <p className="text-[10px] font-bold text-slate-400 font-mono uppercase tracking-tight">LAN Node Workstation Connectivity Authenticator</p>
-            </div>
-
-            <form onSubmit={handleSystemLogin} className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">User Identity ID Code / Email</label>
-                <input type="text" name="identifier" placeholder="e.g., STEPHEN, TEACHER, or ADMIN" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-900 rounded focus:outline-none focus:bg-white focus:border-slate-950 transition-all uppercase font-mono" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Security Access Password</label>
-                <input type="password" name="password" defaultValue="123456" placeholder="••••••••" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-900 rounded focus:outline-none focus:bg-white focus:border-slate-950 transition-all" />
-              </div>
-              <button type="submit" className="w-full py-2.5 bg-slate-950 hover:bg-slate-800 text-white font-bold text-xs uppercase tracking-wider rounded transition-all shadow-md cursor-pointer active:scale-[0.98]">Request Intranet Verification</button>
-            </form>
-
-            <div className="bg-slate-50 border border-slate-100 p-3 rounded text-[10px] font-mono text-slate-400 space-y-1 leading-normal uppercase">
-              <span className="font-bold text-slate-600 block mb-0.5 font-sans text-[9px] tracking-wider">💡 DEMO PRESENTATION PASSKEYS:</span>
-              • Student A (JSS3): <span className="font-black text-slate-900">STEPHEN</span><br />
-              • Student B (SS1): <span className="font-black text-slate-900">FAITH</span><br />
-              • Teacher Account: <span className="font-black text-slate-900">TEACHER</span><br />
-              • Admin Tower: <span className="font-black text-slate-900">ADMIN</span>
-            </div>
-
-          </div>
-        </div>
+      {/* 1. PUBLIC GATEWAY: IDENTITY VERIFICATION TERMINAL */}
+      {currentDomain === 'login' && (
+        <Login onAuthSuccess={handleAuthSuccess} />
       )}
-      
-      {/* ========================================================================= */}
-      {/* STUDENT ROUTING SPACES                                                   */}
-      {/* ========================================================================= */}
+
+      {/* 2. STUDENT LOBBY GATEWAY */}
       {currentDomain === 'student_lobby' && (
-        <StudentLobby student={sessionUser} onStartExam={() => setCurrentDomain('student_exam')} />
-      )}
-      
-      {currentDomain === 'student_exam' && (
-        <SecurityProvider onSecurityViolation={(log) => console.warn(`[INTEGRITY] ${log}`)}>
-          <StudentWorkspace student={sessionUser} onExamSubmit={handleLogOutSystem} />
-        </SecurityProvider>
-      )}
-
-      {/* ========================================================================= */}
-      {/*  TEACHER ROUTING SPACES                                                */}
-      {/* ========================================================================= */}
-      {currentDomain === 'teacher_dash' && (
-        <TeacherDashboard 
-          teacher={sessionUser} 
-          initialFolderContext={activeCourseFolder}
-          onFolderContextChange={(folder) => setActiveCourseFolder(folder)}
-          onNavigateToBuilder={() => setCurrentDomain('teacher_builder')} 
-          onNavigateToMonitor={() => setCurrentDomain('teacher_monitor')}
-          onNavigateToGrading={() => setCurrentDomain('teacher_grading')}      
-          onNavigateToGradebook={() => setCurrentDomain('teacher_gradebook')}
-          onNavigateToReview={(info) => { setSelectedAssessmentInfo(info); setCurrentDomain('teacher_review_scripts'); }}
-          onLogOut={handleLogOutSystem}
+        <StudentLobby 
+          student={userSession} 
+          onLogoutSuccess={handleSessionTermination} 
+          onLaunchWorkspace={(examId) => {
+            const cleanId = sanitizeIncomingId(examId);
+            setSelectedAssessmentId(cleanId);
+            localStorage.setItem('saved_asm_id_context', String(cleanId));
+            navigateToDomainContext('student_workspace');
+          }}
         />
       )}
-      {currentDomain === 'teacher_builder' && <TeacherBuilder onNavigateBack={handleReturnToFolderDashboard} />}
-      {currentDomain === 'teacher_monitor' && <LiveMonitor onNavigateBack={handleReturnToFolderDashboard} />}
-      {currentDomain === 'teacher_grading' && <TheoryMarking onNavigateBack={handleReturnToFolderDashboard} />}
-      {currentDomain === 'teacher_gradebook' && <UnifiedGradebook onNavigateBack={handleReturnToFolderDashboard} />}
-      {currentDomain === 'teacher_review_scripts' && <ScriptReview selectedAssessmentInfo={selectedAssessmentInfo} onNavigateBack={handleReturnToFolderDashboard} />}
 
-      {/* ========================================================================= */}
-      {/*  ADMIN OVERSIGHT ROUTING SPACES                                         */}
-      {/* ========================================================================= */}
+      {/* 3. STUDENT WORKSPACE */}
+      {currentDomain === 'student_workspace' && (
+        <ExamWorkspace 
+          student={userSession}
+          assessmentId={selectedAssessmentId}
+          onExamSubmit={async () => {
+            try {
+              const remainingPackets = await getAllUnsyncedAnswers();
+              if (remainingPackets && remainingPackets.length > 0) {
+                for (const packet of remainingPackets) {
+                  await apiRequest(`api/v1/student/assessments/${selectedAssessmentId}/sync-telemetry`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                      question_id: packet.question_id,
+                      answered_index: packet.answered_index,
+                      theory_response: packet.theory_response,
+                      security_strikes: packet.security_strikes || 0
+                    })
+                  });
+                  await clearSyncedAnswers([packet.question_id]);
+                }
+              }
+              await apiRequest(`api/v1/student/assessments/${selectedAssessmentId}/finalize-submission`, { method: 'POST' });
+              alert("🎉 EXAM SECURELY COMMITTED AND SEALED!");
+            } catch (err) {
+              console.error(err);
+            } finally {
+              handleSessionTermination();
+            }
+          }}
+        />
+      )}
+
+      {/* 4. MASTER HUB PANEL */}
       {currentDomain === 'admin_dash' && (
         <AdminDashboard 
-          onNavigateToApproval={() => setCurrentDomain('admin_approval')}
-          onNavigateToClasses={() => setCurrentDomain('admin_classes_directory')}
-          onNavigateToArchive={() => setCurrentDomain('admin_records_archive')} // 💡 Synced
+          adminUser={userSession} 
+          onNavigateToClasses={() => navigateToDomainContext('admin_classes')}
+          onNavigateToApproval={() => navigateToDomainContext('admin_approval')}
+          onNavigateToArchive={() => navigateToDomainContext('admin_archive')}
+          onNavigateToScheduler={() => navigateToDomainContext('admin_scheduler')} // 💡 WIRED CORRECTLY NOW
           onNavigateToLiveSurveillance={(session) => {
-            setSelectedLiveSession(session);
-            setCurrentDomain('admin_live_surveillance');
+            setSelectedAdminLiveSession(session);
+            localStorage.setItem('saved_admin_live_context', JSON.stringify(session));
+            navigateToDomainContext('admin_live');
           }}
-          onLogOut={handleLogOutSystem}
+          onLogOut={handleSessionTermination} 
         />
       )}
 
-      {currentDomain === 'admin_classes_directory' && (
-        <AdminClassesDirectory 
-          onNavigateToMasterRecords={(classGroupObject) => {
-            setSelectedClassGroup(classGroupObject);
-            setCurrentDomain('admin_master_records');
-          }}
-          onNavigateBack={() => setCurrentDomain('admin_dash')} 
-        />
-      )}
-
-      {currentDomain === 'admin_records_archive' && (
-        <AdminRecordsArchive onNavigateBack={() => setCurrentDomain('admin_dash')} />
-      )}
-
-      {currentDomain === 'admin_approval' && (
-        <AdminApprovalDesk onNavigateBack={() => setCurrentDomain('admin_dash')} />
-      )}
-
-      {currentDomain === 'admin_live_surveillance' && (
-        <AdminLiveMonitor selectedSessionInfo={selectedLiveSession} onNavigateBack={() => setCurrentDomain('admin_dash')} />
-      )}
-
-      {currentDomain === 'admin_master_records' && (
-        <AdminGradebookView selectedClassContext={selectedClassGroup} onNavigateBack={() => setCurrentDomain('admin_dash')} />
-      )}
+      {/* ADMIN LEVEL SUBSYSTEM ROUTES */}
+      {currentDomain === 'admin_classes' && <AdminClassesDirectory onNavigateBack={() => navigateToDomainContext('admin_dash')} />}
+      {currentDomain === 'admin_approval' && <AdminApproval onNavigateBack={() => navigateToDomainContext('admin_dash')} />}
+      {currentDomain === 'admin_archive' && <AdminRecordsArchive onNavigateBack={() => navigateToDomainContext('admin_dash')} />}
+      {currentDomain === 'admin_scheduler' && <ExamScheduler onNavigateBack={() => navigateToDomainContext('admin_dash')} />}
       
+      {currentDomain === 'admin_live' && (
+        <AdminLiveMonitor 
+          selectedSessionInfo={selectedAdminLiveSession} 
+          onNavigateBack={() => {
+            setSelectedAdminLiveSession(null);
+            localStorage.removeItem('saved_admin_live_context');
+            navigateToDomainContext('admin_dash');
+          }} 
+        />
+      )}
+
+      {currentDomain === 'admin_gradebook' && <AdminGradebookView onNavigateBack={() => navigateToDomainContext('admin_dash')} />}
+
+      {/* 5. INSTRUCTOR CONTROL PANEL DECK */}
+      {currentDomain === 'teacher_dash' && (
+        <TeacherDashboard 
+          teacher={userSession} 
+          initialFolderContext={teacherFolderContext} 
+          onFolderContextChange={handleFolderContextCacheUpdate}
+          onNavigateToBuilder={(id) => { const c = sanitizeIncomingId(id); setSelectedAssessmentId(c); localStorage.setItem('saved_asm_id_context', String(c)); navigateToDomainContext('teacher_builder'); }}
+          onNavigateToMonitor={(id) => { const c = sanitizeIncomingId(id); setSelectedAssessmentId(c); localStorage.setItem('saved_asm_id_context', String(c)); navigateToDomainContext('teacher_monitor'); }}
+          onNavigateToGrading={(id) => { const c = sanitizeIncomingId(id); setSelectedAssessmentId(c); localStorage.setItem('saved_asm_id_context', String(c)); navigateToDomainContext('teacher_grading'); }}
+          onNavigateToGradebook={(f) => { handleFolderContextCacheUpdate(f); navigateToDomainContext('teacher_gradebook_matrix'); }}
+          onNavigateToReview={() => alert("Retrieving Student Scripts...")}
+          onLogOut={handleSessionTermination}
+        />
+      )}
+
+      {currentDomain === 'teacher_grading' && <MarkEssays assessmentId={selectedAssessmentId} onNavigateBack={() => navigateToDomainContext('teacher_dash')} />}
+      {currentDomain === 'teacher_gradebook_matrix' && <GradebookMatrix activeFolderContext={teacherFolderContext} onNavigateBack={() => navigateToDomainContext('teacher_dash')} />}
+      {currentDomain === 'teacher_builder' && <QuestionBuilder assessmentId={selectedAssessmentId} onNavigateBack={() => navigateToDomainContext('teacher_dash')} />}
+      {currentDomain === 'teacher_monitor' && <LiveMonitor assessmentId={selectedAssessmentId} onNavigateBack={() => navigateToDomainContext('teacher_dash')} />}
+
     </div>
   );
 }

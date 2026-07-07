@@ -1,248 +1,262 @@
-import React, { useState } from 'react';
-import { Calendar, UserCheck, Layers, BookOpen, Plus, Play, Power, CheckCircle } from 'lucide-react';
-import ConfirmationModal from '../../shared/ConfirmationModal';
+import React, { useState, useEffect } from 'react';
+import { 
+  ArrowLeft, 
+  Calendar, 
+  Clock, 
+  Play, 
+  Loader2, 
+  CheckCircle2, 
+  AlertTriangle, 
+  XCircle, 
+  X, 
+  ShieldAlert 
+} from 'lucide-react';
+import { apiRequest } from '../../core/api';
+import Logo from '../../shared/Logo';
 
-export default function ExamScheduler() {
-  // Master Scheduled Sessions State
-  const [scheduledExams, setScheduledExams] = useState([
-    { id: 'sch_1', classGroup: 'Grade 9 / JSS 3', subject: 'Computer Science', teacher: 'Mr. Ochigbo Godswill', duration: '60 Mins', status: 'active' },
-    { id: 'sch_2', classGroup: 'Grade 10 / SS 1', subject: 'Mathematics', teacher: 'Dr. Felix Uloko', duration: '45 Mins', status: 'pending' }
-  ]);
+export default function ExamScheduler({ onNavigateBack }) {
+  const [exams, setExams] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  // Form Field Configuration States
-  const [targetClass, setTargetClass] = useState('Grade 9 / JSS 3');
-  const [targetSubject, setTargetSubject] = useState('');
-  const [assignedTeacher, setAssignedTeacher] = useState('');
-  const [durationWindow, setDurationWindow] = useState('60');
+  // 🏛️ MODAL MATRIX STATE REGISTERS
+  const [modalConfig, setModalConfig] = useState({
+    isOpen: false,
+    type: 'confirm', // 'confirm' | 'success' | 'clash' | 'error'
+    title: '',
+    message: '',
+    targetId: null
+  });
 
-  // Modal Control Triggers
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [showSuccessToast, setShowSuccessToast] = useState(false);
-
-  const handleTriggerVerification = (e) => {
-    e.preventDefault();
-    if (!targetSubject.trim() || !assignedTeacher.trim()) {
-      alert("Error: Please provide valid parameters for all configuration cells.");
-      return;
+  const fetchScheduledLedger = async () => {
+    setIsLoading(true);
+    try {
+      const res = await apiRequest('api/v1/admin/scheduler/list', { method: 'GET' });
+      if (res.ok) {
+        const payload = await res.json();
+        setExams(payload.data || []);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoading(false);
     }
-    setIsModalOpen(true);
   };
 
-  const handleExecuteScheduleCommit = () => {
-    const newSession = {
-      id: `sch_${Date.now()}`,
-      classGroup: targetClass,
-      subject: targetSubject.toUpperCase(),
-      teacher: assignedTeacher,
-      duration: `${durationWindow} Mins`,
-      status: 'pending'
-    };
+  useEffect(() => {
+    fetchScheduledLedger();
+  }, []);
 
-    setScheduledExams([...scheduledExams, newSession]);
-    setIsModalOpen(false);
-    
-    // Clear dynamic inputs fields
-    setTargetSubject('');
-    setAssignedTeacher('');
-    
-    // Flash Success Toast Alert
-    setShowSuccessToast(true);
-    setTimeout(() => setShowSuccessToast(false), 2500);
+  // ─── MODAL CONTROLLER HANDLERS ───
+  const closeNotificationModal = () => {
+    setModalConfig(prev => ({ ...prev, isOpen: false }));
   };
 
-  const toggleSessionStatus = (id) => {
-    setScheduledExams(scheduledExams.map(exam => 
-      exam.id === id ? { ...exam, status: exam.status === 'active' ? 'pending' : 'active' } : exam
-    ));
+  const triggerLaunchConfirmation = (examId, subjectName, armName) => {
+    setModalConfig({
+      isOpen: true,
+      type: 'confirm',
+      title: 'Confirm Exam Activation Gate',
+      message: `Are you sure you want to force-launch ${subjectName} for ${armName} immediately? This makes the testing session live on the student network.`,
+      targetId: examId
+    });
   };
+
+  const executeForceLaunchPipeline = async () => {
+    const examId = modalConfig.targetId;
+    if (!examId) return;
+
+    setIsProcessing(true);
+    closeNotificationModal();
+
+    try {
+      const res = await apiRequest(`api/v1/admin/scheduler/force-launch/${examId}`, { method: 'POST' });
+      const payload = await res.json();
+      
+      if (res.ok && payload.status === 'SUCCESS') {
+        setModalConfig({
+          isOpen: true,
+          type: 'success',
+          title: 'Activation Complete',
+          message: 'The examination channel is now live. Student computers are authorized to initialize their tests.',
+          targetId: null
+        });
+        fetchScheduledLedger();
+      } else if (payload.status === 'CLASH_DETECTED') {
+        setModalConfig({
+          isOpen: true,
+          type: 'clash',
+          title: 'Scheduling Conflict Blocked',
+          message: payload.message,
+          targetId: null
+        });
+      } else {
+        setModalConfig({
+          isOpen: true,
+          type: 'error',
+          title: 'Execution Error Fault',
+          message: payload.message || 'An unhandled server constraint validation failure occurred.',
+          targetId: null
+        });
+      }
+    } catch (err) {
+      console.error(err);
+      setModalConfig({
+        isOpen: true,
+        type: 'error',
+        title: 'Network Handshake Interrupted',
+        message: 'Failed to establish stable connections with administrative data arrays.',
+        targetId: null
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col justify-center items-center font-mono text-xs uppercase text-[#9A87A9] tracking-widest gap-2">
+        <Loader2 className="w-5 h-5 animate-spin text-[#2A1A63]" />
+        Synchronizing exam timetable schedules neatly...
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-[#fcfcfc] flex flex-col justify-between select-none">
+    <div className="min-h-screen bg-[#FAF9FA] flex flex-col justify-between select-none text-[#2A1A63] font-sans relative overflow-hidden w-full text-left">
       
-      {/* Upper Infrastructure Dashboard Navbar */}
-      <header className="w-full bg-white border-b border-slate-200 px-6 py-4 sticky top-0 z-40 shadow-2xs">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-slate-900 text-white font-bold text-xs flex items-center justify-center rounded">
-              ADM
-            </div>
-            <div>
-              <h2 className="text-xs font-bold text-slate-900 uppercase tracking-tight">System Infrastructure Console</h2>
-              <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-wider font-mono">Master Route Orchestrator Network</p>
-            </div>
-          </div>
-          <span className="text-[10px] font-bold tracking-widest text-slate-400 font-mono uppercase bg-slate-50 border px-2 py-0.5 rounded-xs">LAN_SERVER_STATUS // OK</span>
+      {/* TIMETABLE ROUTER HEADER */}
+      <header className="w-full bg-white border-b border-[#9A87A9]/30 px-4 md:px-6 py-4 sticky top-0 z-40 flex items-center gap-2 shadow-3xs shrink-0">
+        <button 
+          onClick={onNavigateBack} 
+          className="p-1.5 border border-[#9A87A9]/30 rounded-lg text-[#9A87A9] hover:text-[#2A1A63] hover:bg-[#FAF9FA] cursor-pointer transition-all active:scale-[0.95] mr-2"
+        >
+          <ArrowLeft className="w-4 h-4" />
+        </button>
+        <div className="mr-1">
+          <Logo size={45} showText={false} />
+        </div>
+        <div>
+          <h2 className="text-xs font-black uppercase tracking-wider text-slate-950">Exam Timetable Scheduler</h2>
+          <p className="text-[10px] font-bold text-[#9A87A9] uppercase font-mono tracking-tight mt-0.5">Automated Activation Pipeline Desk</p>
         </div>
       </header>
 
-      {/* Main Structural Twin Grid Panel Layout Wrapper */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 my-auto items-stretch">
-        
-        {/* LEFT COLUMN COMPARTMENT: Configuration Parameter Form Panel */}
-        <section className="bg-white border border-slate-200 rounded-lg p-5 flex flex-col justify-between shadow-2xs h-[520px]">
-          <form onSubmit={handleTriggerVerification} className="space-y-4">
-            <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5 mb-2">
-              <Calendar className="w-4 h-4 text-slate-400" />
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">Create Exam Link Wrapper</span>
+      {/* CORE SCHEDULER TIMELINE VIEW */}
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 flex flex-col justify-start space-y-4">
+        {exams.map((exam, idx) => (
+          <div key={exam.id || idx} className="bg-white border border-[#9A87A9]/20 rounded-xl p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-3xs w-full transition-all hover:border-[#9A87A9]/40">
+            
+            <div className="space-y-1.5 truncate w-full sm:w-auto text-left">
+              <div className="flex items-center gap-2 flex-wrap">
+                {exam.status === 'Exam in Progress' ? (
+                  <span className="px-2 py-0.5 text-[8px] font-mono font-black bg-emerald-600 text-white rounded-md uppercase tracking-wider animate-pulse">● LIVE RUNNING</span>
+                ) : (
+                  <span className="px-2 py-0.5 text-[8px] font-mono font-black bg-slate-900 text-white rounded-md uppercase tracking-wider">SCHEDULED</span>
+                )}
+                <span className="px-1.5 py-0.5 text-[9px] font-mono bg-[#FAF9FA] border border-[#9A87A9]/20 text-slate-700 font-black rounded-md uppercase">{exam.code}</span>
+                <h4 className="text-sm font-black text-slate-950 uppercase tracking-tight truncate">{exam.subject} — {exam.arm}</h4>
+              </div>
+
+              <div className="flex items-center gap-4 text-[11px] text-[#9A87A9] font-mono uppercase tracking-tight font-bold">
+                <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5 text-[#9A87A9]/50" /> Start Date: {exam.scheduled_start || 'MANUAL TRIGGER'}</span>
+                <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5 text-[#9A87A9]/50" /> Duration: {exam.duration} Mins</span>
+              </div>
             </div>
 
-            {/* 1. Structural Layer: Class Group Selection */}
-            <div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                <Layers className="w-3.5 h-3.5 text-slate-400" /> 01 / Target Class Group
-              </label>
-              <select 
-                value={targetClass} 
-                onChange={(e) => setTargetClass(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-900 rounded focus:outline-none focus:border-slate-900 focus:bg-white transition-all cursor-pointer"
-              >
-                <option value="Grade 7 / JSS 1">Grade 7 / JSS 1</option>
-                <option value="Grade 8 / JSS 2">Grade 8 / JSS 2</option>
-                <option value="Grade 9 / JSS 3">Grade 9 / JSS 3</option>
-                <option value="Grade 10 / SS 1">Grade 10 / SS 1</option>
-                <option value="Grade 11 / SS 2">Grade 11 / SS 2</option>
-                <option value="Grade 12 / SS 3">Grade 12 / SS 3</option>
-              </select>
+            {/* ACTION TRIGGERS CONTROLS */}
+            <div className="shrink-0 w-full sm:w-auto">
+              {exam.status === 'Exam in Progress' ? (
+                <div className="text-emerald-700 bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-lg text-xs font-black uppercase font-mono tracking-wider text-center flex items-center justify-center gap-1">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Surveillance Room Live
+                </div>
+              ) : (
+                <button
+                  disabled={isProcessing}
+                  onClick={() => triggerLaunchConfirmation(exam.id, exam.subject, exam.arm)}
+                  className="w-full sm:w-auto px-4 py-2 bg-[#2A1A63] hover:opacity-90 disabled:bg-slate-300 text-white text-xs font-mono font-black uppercase rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-[0.97] shadow-md"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" /> Force Launch Live
+                </button>
+              )}
             </div>
 
-            {/* 2. Structural Layer: Subject Input String */}
-            <div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                <BookOpen className="w-3.5 h-3.5 text-slate-400" /> 02 / Examination Subject
-              </label>
-              <input 
-                type="text" 
-                required
-                value={targetSubject}
-                onChange={(e) => setTargetSubject(e.target.value)}
-                placeholder="e.g., Computer Science, Mathematics" 
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:bg-white transition-all rounded"
-              />
-            </div>
-
-            {/* 3. Structural Layer: Assign Teacher Link Name */}
-            <div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                <UserCheck className="w-3.5 h-3.5 text-slate-400" /> 03 / Assigned Teacher Evaluator
-              </label>
-              <input 
-                type="text" 
-                required
-                value={assignedTeacher}
-                onChange={(e) => setAssignedTeacher(e.target.value)}
-                placeholder="e.g., Mr. Ochigbo Godswill" 
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:bg-white transition-all rounded"
-              />
-            </div>
-
-            {/* 4. Structural Layer: Allocation Duration Time values */}
-            <div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">04 / Session Duration Window</label>
-              <select 
-                value={durationWindow} 
-                onChange={(e) => setDurationWindow(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-900 rounded focus:outline-none focus:border-slate-900 transition-all cursor-pointer"
-              >
-                <option value="30">30 Minutes Time Window</option>
-                <option value="45">45 Minutes Time Window</option>
-                <option value="60">60 Minutes Time Window</option>
-                <option value="90">90 Minutes Time Window</option>
-                <option value="120">120 Minutes Time Window</option>
-              </select>
-            </div>
-          </form>
-
-          <button 
-            onClick={handleTriggerVerification}
-            className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs uppercase tracking-wider rounded transition-all mt-4 flex items-center justify-center gap-1 shadow-2xs active:scale-[0.99]"
-          >
-            <Plus className="w-4 h-4" /> Deploy Session Wrapper
-          </button>
-        </section>
-
-        {/* RIGHT COLUMN COMPARTMENT: Active Rooms Ledger Database Table View Grid */}
-        <section className="lg:col-span-2 bg-white border border-slate-200 rounded-lg p-5 flex flex-col justify-between shadow-2xs h-[520px] overflow-hidden">
-          <div className="w-full h-full flex flex-col overflow-hidden">
-            <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-100">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">Live Allocated Networks Operational Logs ({scheduledExams.length})</span>
-            </div>
-
-            {/* Flat Ledger structural layout grid table data container */}
-            <div className="flex-1 overflow-y-auto border border-slate-100 rounded">
-              <table className="w-full border-collapse text-left text-xs font-medium text-slate-600">
-                <thead className="bg-slate-50 border-b border-slate-100 font-mono font-bold uppercase text-[9px] text-slate-400 sticky top-0 z-10">
-                  <tr>
-                    <th className="p-3 px-4">Class Group</th>
-                    <th className="p-3">Subject / Paper</th>
-                    <th className="p-3">Teacher In-Charge</th>
-                    <th className="p-3">Window</th>
-                    <th className="p-3 text-right px-4">Status / Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 bg-white font-semibold text-slate-700">
-                  {scheduledExams.map((exam) => (
-                    <tr key={exam.id} className="hover:bg-slate-50/60 transition-all">
-                      <td className="p-3 px-4 text-slate-900 uppercase font-bold text-[11px] font-mono tracking-tight">{exam.classGroup}</td>
-                      <td className="p-3 max-w-[140px] truncate">{exam.subject}</td>
-                      <td className="p-3 truncate max-w-[120px] text-slate-500">{exam.teacher}</td>
-                      <td className="p-3 text-slate-400 font-mono text-[11px]">{exam.duration}</td>
-                      <td className="p-3 text-right px-4">
-                        <button 
-                          onClick={() => toggleSessionStatus(exam.id)}
-                          className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide rounded border transition-all flex items-center gap-1 ml-auto cursor-pointer ${
-                            exam.status === 'active'
-                              ? 'bg-slate-900 border-slate-900 text-white shadow-2xs'
-                              : 'bg-white border-slate-200 text-slate-400 hover:text-slate-800 hover:border-slate-400'
-                          }`}
-                        >
-                          {exam.status === 'active' ? (
-                            <>
-                              <Power className="w-3 h-3 text-emerald-400 shrink-0" /> Live On-Air
-                            </>
-                          ) : (
-                            <>
-                              <Play className="w-3 h-3 text-slate-400 shrink-0" /> Standby
-                            </>
-                          )}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
           </div>
-        </section>
+        ))}
 
+        {exams.length === 0 && (
+          <div className="text-center p-16 text-[#9A87A9] font-black uppercase font-mono text-xs py-24 bg-white border border-dashed border-[#9A87A9]/30 rounded-xl w-full">
+            No upcoming approved test sheets are registered on the scheduler timeline rows.
+          </div>
+        )}
       </main>
 
-      {/* Reusable Confirmation Modal Canvas Setup */}
-      <ConfirmationModal 
-        isOpen={isModalOpen}
-        title="Confirm Exam Deployment"
-        message="Are you sure you want to initialize and deploy this exam session configuration across the intranet terminals hub network layer?"
-        confirmLabel="Initialize Room"
-        cancelLabel="Discard Block"
-        onConfirm={handleExecuteScheduleCommit}
-        onCancel={() => setIsModalOpen(false)}
-        summaryData={{
-          "Target Partition": targetClass,
-          "Subject Core": targetSubject.toUpperCase(),
-          "Assigned Link": assignedTeacher,
-          "Time Perimeter": `${durationWindow} Minutes`
-        }}
-      />
+      {/* INSTITUTIONAL SCHEDULER INFRASTRUCTURE INTERCEPT MODAL */}
+      <div className={`fixed inset-0 bg-slate-950/40 backdrop-blur-xs z-[10000] transition-all duration-300 flex flex-col justify-end w-full ${modalConfig.isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+        <div className={`w-full bg-white p-4 md:p-6 shadow-2xl transition-all duration-300 transform font-mono border-t-2 ${
+          modalConfig.type === 'confirm' ? 'border-[#2A1A63]' :
+          modalConfig.type === 'success' ? 'border-emerald-600' : 'border-[#C62927]'
+        } ${modalConfig.isOpen ? 'translate-y-0' : 'translate-y-full'}`}>
+          
+          <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-4 w-full relative">
+            <button 
+              onClick={closeNotificationModal} 
+              className="absolute -top-1.5 right-0 p-1 text-slate-300 hover:text-slate-600 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            
+            <div className="flex items-start md:items-center gap-3 w-full md:w-auto">
+              <div className={`w-10 h-10 border rounded-lg flex items-center justify-center shrink-0 ${
+                modalConfig.type === 'confirm' ? 'bg-indigo-50 text-[#2A1A63] border-indigo-100' :
+                modalConfig.type === 'success' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                modalConfig.type === 'clash' ? 'bg-amber-50 text-amber-700 border-amber-100' : 'bg-rose-50 text-[#C62927] border-rose-100'
+              }`}>
+                {modalConfig.type === 'confirm' && <ShieldAlert className="w-5 h-5" />}
+                {modalConfig.type === 'success' && <CheckCircle2 className="w-5 h-5" />}
+                {modalConfig.type === 'clash' && <AlertTriangle className="w-5 h-5" />}
+                {modalConfig.type === 'error' && <XCircle className="w-5 h-5" />}
+              </div>
+              <div className="pr-6 text-left">
+                <h3 className="text-xs font-black text-slate-950 uppercase tracking-tight font-sans">{modalConfig.title}</h3>
+                <p className="text-[10px] font-bold text-[#9A87A9] uppercase mt-0.5 tracking-wide leading-relaxed">{modalConfig.message}</p>
+              </div>
+            </div>
 
-      {/* Success Notification Alert */}
-      {showSuccessToast && (
-        <div className="fixed bottom-6 right-6 z-[9999] bg-slate-900 text-white px-4 py-3 rounded-md shadow-xl border border-slate-800 flex items-center gap-2 font-mono text-xs uppercase">
-          <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" /> Exam Session Successfully Activated!
+            {/* ACTION FOOTER CONTROL TIERS */}
+            <div className="flex gap-2 w-full md:w-auto font-sans border-t md:border-t-0 pt-3 md:pt-0 border-slate-100 shrink-0 justify-end">
+              {modalConfig.type === 'confirm' ? (
+                <>
+                  <button 
+                    onClick={closeNotificationModal} 
+                    className="px-4 py-2 border border-[#9A87A9]/30 text-slate-600 hover:bg-[#FAF9FA] text-xs font-bold uppercase rounded-lg cursor-pointer transition-all text-center"
+                  >
+                    Cancel Action
+                  </button>
+                  <button 
+                    onClick={executeForceLaunchPipeline} 
+                    className="px-5 py-2.5 bg-[#2A1A63] hover:opacity-90 text-white text-xs font-bold uppercase rounded-lg shadow-md cursor-pointer font-mono text-center tracking-wide"
+                  >
+                    Confirm Launch
+                  </button>
+                </>
+              ) : (
+                <button 
+                  onClick={closeNotificationModal} 
+                  className="px-5 py-2 bg-[#2A1A63] hover:opacity-90 text-white text-xs font-bold uppercase rounded-lg cursor-pointer transition-all text-center font-mono"
+                >
+                  Dismiss Notice
+                </button>
+              )}
+            </div>
+
+          </div>
         </div>
-      )}
+      </div>
 
-      {/* Global Bottom Sticky Branding row footer */}
-      <footer className="w-full border-t border-slate-200/60 bg-white py-2 text-center text-[9px] font-bold text-slate-400 tracking-wider font-mono uppercase">
-        StartriteIntranet Management Framework Cluster
+      {/* FOOTER */}
+      <footer className="w-full border-t border-[#9A87A9]/20 bg-white py-2.5 text-center text-[9px] font-black text-[#9A87A9] tracking-wider font-mono uppercase shrink-0">
+        Start-Rite Schools Corporate Scheduler Registry Systems Layer © 2026
       </footer>
 
     </div>

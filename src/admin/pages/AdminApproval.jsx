@@ -1,94 +1,141 @@
-import React, { useState } from 'react';
-import { ArrowLeft, CheckCircle2, XCircle, MessageSquare, Eye, FileText, Layers, ListChecks } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ArrowLeft, CheckCircle2, XCircle, MessageSquare, Layers, ListChecks, Loader2, AlertTriangle } from 'lucide-react';
+import { apiRequest } from '../../core/api';
 import ConfirmationModal from '../../shared/ConfirmationModal';
+import Logo from '../../shared/Logo';
 
 export default function AdminApproval({ onNavigateBack }) {
-  // 💡 DETAILED PRESENTATION REGISTRY PACKET
-  const [pendingReviews, setPendingReviews] = useState([
-    { 
-      id: 'asm_4', 
-      classGroup: 'Grade 9 / JSS 3', 
-      subject: 'COMPUTER SCIENCE', 
-      type: 'Exam', 
-      duration: '60 Mins', 
-      teacher: 'Mr. Ochigbo Godswill', 
-      status: 'Under Review',
-      objectivesList: [
-        { id: 'o_1', num: 1, text: 'Which network topology connects all endpoints back to one single central hub switch node device?', options: ['Bus Topology Layout', 'Ring Topology Layout', 'Star Hub Layout', 'Mesh Network Layout'], correctIndex: 2 },
-        { id: 'o_2', num: 2, text: 'Evaluate the database architecture rule. Which form normal structural model targets dropping partial primary dependencies cleanly?', options: ['First Normal Form (1NF)', 'Second Normal Form (2NF)', 'Third Normal Form (3NF)', 'Boyce-Codd Normal Form (BCNF)'], correctIndex: 1 }
-      ],
-      theoriesList: [
-        { id: 't_1', num: 1, text: 'Examine the microprocessor chip outline illustration. Explain how clock cycles govern binary ingestion calculations inside the Arithmetic Logic Unit.', points: 10, rubricSchema: 'Full marks require explaining clock frequency synchronization, fetch-execute lifecycle steps, and instruction register status shifts.' },
-        { id: 't_2', num: 2, text: 'Detail why a school computing lab operating an isolated intranet local server remains immune to public internet breaches, and specify two physical security threats to manage.', points: 10, rubricSchema: 'Must explicitly outline NAT boundary exclusion, local router subnet air-gapping, and physical port locking access nodes.' }
-      ]
-    },
-    { 
-      id: 'asm_7', 
-      classGroup: 'Grade 7 / JSS 1', 
-      subject: 'BASIC DIGITAL LITERACY', 
-      type: 'CA 2', 
-      duration: '30 Mins', 
-      teacher: 'Mr. Dung Stephen Nyam', 
-      status: 'Under Review',
-      objectivesList: [
-        { id: 'o_3', num: 1, text: 'Which internal hardware module processes volatile temporary runtime instruction threads direct for the CPU register caches?', options: ['Solid State Disk (SSD)', 'Read Only Memory (ROM)', 'Random Access Memory (RAM)', 'Graphics Processing Core (GPU)'], correctIndex: 2 }
-      ],
-      theoriesList: [
-        { id: 't_3', num: 1, text: 'Differentiate between input peripheral signals and hardware output rendering pipelines with clear real-world deployment examples.', points: 10, rubricSchema: 'Requires mapping signal conversion micro-controllers for data ingestion vs hardware rendering drivers.' }
-      ]
-    }
-  ]);
-
-  const [activeReviewId, setActiveReviewId] = useState('asm_4');
-  const [activeSectorTab, setActiveSectorTab] = useState('obj'); // 'obj' | 'theory'
+  const [pendingReviews, setPendingReviews] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [activeReviewId, setActiveReviewId] = useState(null);
+  const [activeSectorTab, setActiveSectorTab] = useState('obj'); 
   const [rejectionFeedback, setRejectionFeedback] = useState('');
   const [modalConfig, setModalConfig] = useState({ isOpen: false, type: null });
 
+  // Error modal toggle states for removing standard alerts
+  const [errorModal, setErrorModal] = useState({ isOpen: false, title: '', message: '' });
+
+  // Load pending exam configurations from the backend on mount
+  const fetchVettingQueue = async () => {
+    setIsLoading(true);
+    try {
+      const res = await apiRequest('api/v1/admin/vetting/pending-papers', { method: 'GET' });
+      const resData = await res.json();
+      if (res.ok && resData.papers) {
+        setPendingReviews(resData.papers);
+        if (resData.papers.length > 0) {
+          setActiveReviewId(resData.papers[0].id);
+        }
+      }
+    } catch (err) {
+      console.error("❌ [VETTING DESK NETWORK DROP]:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchVettingQueue();
+  }, []);
+
   const currentPaper = pendingReviews.find(p => p.id === activeReviewId);
 
-  const handleExecuteApproval = () => {
-    setPendingReviews(pendingReviews.filter(p => p.id !== activeReviewId));
-    setModalConfig({ isOpen: false, type: null });
-    alert(`Authorized: ${currentPaper?.subject} has been officially approved and marked READY for student delivery!`);
-    
-    if (pendingReviews.length > 1) {
-      setActiveReviewId(pendingReviews.find(p => p.id !== activeReviewId).id);
+  const handleExecuteApproval = async () => {
+    if (!currentPaper) return;
+    try {
+      const res = await apiRequest(`api/v1/admin/vetting/assessments/${currentPaper.id}/approve`, { method: 'POST' });
+      if (res.ok) {
+        const structuralRemaining = pendingReviews.filter(p => p.id !== currentPaper.id);
+        setPendingReviews(structuralRemaining);
+        setModalConfig({ isOpen: false, type: null });
+        
+        if (structuralRemaining.length > 0) {
+          setActiveReviewId(structuralRemaining[0].id);
+        } else {
+          setActiveReviewId(null);
+        }
+      } else {
+        setErrorModal({
+          isOpen: true,
+          title: 'Authorization Failure',
+          message: 'The server could not authorize deployment clearance for this test paper.'
+        });
+      }
+    } catch (err) {
+      console.error("Approval error:", err);
     }
   };
 
-  const handleExecuteRejection = () => {
+  const handleExecuteRejection = async () => {
+    if (!currentPaper) return;
     if (!rejectionFeedback.trim()) {
-      alert("Please enter adjustment corrections notes for the teacher before rejecting.");
+      setErrorModal({
+        isOpen: true,
+        title: 'Feedback Required',
+        message: 'Please write out correction notes for the teacher explaining what needs adjustment before returning the paper.'
+      });
+      setModalConfig({ isOpen: false, type: null });
       return;
     }
-    setPendingReviews(pendingReviews.filter(p => p.id !== activeReviewId));
-    setModalConfig({ isOpen: false, type: null });
-    alert(`Returned: Question paper sheet kicked back to teacher dashboard work desk with feedback context.`);
-    setRejectionFeedback('');
-    
-    if (pendingReviews.length > 1) {
-      setActiveReviewId(pendingReviews.find(p => p.id !== activeReviewId).id);
+
+    try {
+      const res = await apiRequest(`api/v1/admin/vetting/assessments/${currentPaper.id}/reject`, {
+        method: 'POST',
+        body: JSON.stringify({ feedback_comment: rejectionFeedback })
+      });
+
+      if (res.ok) {
+        const structuralRemaining = pendingReviews.filter(p => p.id !== currentPaper.id);
+        setPendingReviews(structuralRemaining);
+        setModalConfig({ isOpen: false, type: null });
+        setRejectionFeedback('');
+        
+        if (structuralRemaining.length > 0) {
+          setActiveReviewId(structuralRemaining[0].id);
+        } else {
+          setActiveReviewId(null);
+        }
+      } else {
+        setErrorModal({
+          isOpen: true,
+          title: 'Transmission Failed',
+          message: 'Could not transmit correction notes back to the teacher profile workbench.'
+        });
+      }
+    } catch (err) {
+      console.error("Rejection error:", err);
     }
   };
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col justify-center items-center font-mono text-xs uppercase text-[#9A87A9] tracking-widest gap-2">
+        <Loader2 className="w-5 h-5 animate-spin text-[#2A1A63]" />
+        Opening question paper vetting repository files...
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[#fcfcfc] flex flex-col justify-between select-none font-sans text-slate-900">
+    <div className="min-h-screen bg-[#FAF9FA] flex flex-col justify-between select-none font-sans text-[#2A1A63]">
       
-      {/* Header View */}
-      <header className="w-full bg-slate-950 text-white px-4 md:px-6 py-4 sticky top-0 z-40 shadow-md">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 w-full">
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <button onClick={onNavigateBack} className="p-1.5 hover:bg-slate-800 border border-slate-800 rounded text-slate-400 hover:text-white mr-1 cursor-pointer transition-all active:scale-[0.96]">
+      {/* BRAND SUB-LAYER CONTROL HEADER */}
+      <header className="w-full bg-white border-b border-[#9A87A9]/30 px-4 md:px-6 py-4 sticky top-0 z-40 shadow-3xs">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 w-full">
+          <div className="flex items-center gap-2">
+            <button onClick={onNavigateBack} className="p-1.5 hover:bg-[#FAF9FA] border border-[#9A87A9]/30 rounded-lg text-[#9A87A9] hover:text-[#2A1A63] mr-2 cursor-pointer transition-all active:scale-[0.96]">
               <ArrowLeft className="w-4 h-4" />
             </button>
-            <div className="w-8 h-8 bg-white text-slate-950 font-black text-xs flex items-center justify-center rounded-sm shrink-0">ADM</div>
-            <div className="truncate">
-              <h2 className="text-xs font-black text-white uppercase tracking-wider truncate">Question Paper Inspection Desk</h2>
-              <p className="text-[10px] font-bold text-slate-400 uppercase font-mono tracking-tight truncate">Principal Oversight Panel</p>
+            <div className="mr-1">
+              <Logo size={45} showText={false} />
+            </div>
+            <div>
+              <h2 className="text-xs font-black uppercase tracking-wider text-slate-950">Question Paper Moderation Desk</h2>
+              <p className="text-[10px] font-bold text-[#9A87A9] uppercase font-mono tracking-tight">Principal Oversight Panel</p>
             </div>
           </div>
-          <span className="text-[10px] font-mono font-bold text-amber-400 bg-amber-950/40 border border-amber-900/60 px-2.5 py-1 rounded uppercase tracking-wide shrink-0">
-            {pendingReviews.length} Papers Pending Signature
+          <span className="text-[10px] font-mono font-black text-[#C62927] bg-rose-50 border border-rose-100 px-2.5 py-1.5 rounded-lg uppercase tracking-wide shrink-0">
+            {pendingReviews.length} Papers Awaiting Review
           </span>
         </div>
       </header>
@@ -97,168 +144,170 @@ export default function AdminApproval({ onNavigateBack }) {
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 items-start my-auto">
         
         {/* LEFT COLUMN: Vetting Ledger Incoming Queue List */}
-        <section className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col min-h-[200px] lg:h-[540px] shadow-2xs overflow-hidden w-full">
-          <div className="mb-4 pb-2 border-b border-slate-100 shrink-0">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">Vetting Queue List</span>
+        <section className="bg-white border border-[#9A87A9]/30 rounded-xl p-4 flex flex-col min-h-[200px] lg:h-[540px] shadow-3xs overflow-hidden w-full">
+          <div className="mb-4 pb-2 text-left border-b border-[#FAF9FA] shrink-0">
+            <span className="text-[10px] font-black text-[#9A87A9] uppercase tracking-wider font-mono">Moderation Queue Roll</span>
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-2 pr-1 w-full">
-            {pendingReviews.map((paper) => {
+            {pendingReviews.map((paper, idx) => {
               const isSelected = paper.id === activeReviewId;
               return (
                 <div
-                  key={paper.id}
+                  key={paper.id || idx}
                   onClick={() => {
                     setActiveReviewId(paper.id);
                     setRejectionFeedback('');
                   }}
-                  className={`p-4 border rounded-lg text-left cursor-pointer transition-all w-full ${
-                    isSelected ? 'border-slate-950 bg-slate-50 shadow-3xs' : 'border-slate-100 bg-white hover:border-slate-200'
+                  className={`p-4 border rounded-xl text-left cursor-pointer transition-all w-full ${
+                    isSelected ? 'border-[#2A1A63] bg-[#FAF9FA] shadow-3xs' : 'border-[#9A87A9]/20 bg-white hover:border-[#9A87A9]/40'
                   }`}
                 >
                   <div className="flex justify-between items-start gap-2 flex-wrap">
-                    <span className="text-[9px] font-mono font-bold uppercase border px-1.5 py-0.5 rounded-sm bg-white text-slate-500 shrink-0">{paper.type}</span>
-                    <span className="text-[10px] text-slate-400 font-mono font-bold shrink-0">{paper.duration}</span>
+                    <span className="text-[9px] font-mono font-black uppercase border px-1.5 py-0.5 rounded bg-white text-slate-700 shrink-0">{paper.type}</span>
+                    <span className="text-[10px] text-[#9A87A9] font-mono font-black bg-[#FAF9FA] px-1.5 py-0.5 rounded tracking-wide shrink-0">{paper.duration} Mins</span>
                   </div>
                   <h4 className="text-xs font-black uppercase tracking-tight text-slate-950 mt-2.5 truncate">{paper.subject}</h4>
-                  <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wide mt-1 truncate">{paper.classGroup} • {paper.teacher}</p>
+                  <p className="text-[11px] font-bold text-[#9A87A9] uppercase tracking-wide mt-1 truncate">{paper.classGroup} • {paper.teacher}</p>
                 </div>
               );
             })}
             {pendingReviews.length === 0 && (
-              <div className="text-center p-8 font-medium text-slate-400 italic text-xs mt-12 w-full">All submitted papers verified. Queue completely empty!</div>
+              <div className="text-center p-8 font-black text-[#9A87A9] uppercase tracking-wide font-mono text-xs mt-12 py-24 w-full bg-[#FAF9FA]/40 rounded-xl border border-dashed border-[#9A87A9]/30">Queue completely clear! All papers reviewed.</div>
             )}
           </div>
         </section>
 
         {/* RIGHT COLUMN: Interactive Review Sandbox Preview Pane */}
-        <section className="lg:col-span-2 bg-white border border-slate-200 rounded-xl p-4 md:p-5 flex flex-col min-h-[460px] lg:h-[540px] shadow-2xs overflow-hidden w-full">
+        <section className="lg:col-span-2 bg-white border border-[#9A87A9]/30 rounded-xl p-4 md:p-5 flex flex-col min-h-[460px] lg:h-[540px] shadow-3xs overflow-hidden w-full">
           {currentPaper ? (
             <div className="w-full h-full flex flex-col justify-between overflow-hidden">
               <div className="space-y-4 flex-1 overflow-y-auto pb-4 pr-1 w-full">
                 
                 {/* Active Inspecting Metadata Strip Card */}
-                <div className="bg-slate-900 text-white p-4 rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-xs shrink-0 w-full">
-                  <div className="truncate w-full sm:w-auto">
-                    <span className="text-[8px] font-mono font-bold uppercase text-slate-400 tracking-wider block">Inspecting Assessment Ledger</span>
-                    <h3 className="text-xs md:text-sm font-black uppercase tracking-tight mt-0.5 truncate">{currentPaper.subject}</h3>
-                    <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wide mt-0.5 font-mono truncate">{currentPaper.classGroup}</p>
+                <div className="bg-[#2A1A63] text-white p-4 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-sm shrink-0 w-full">
+                  <div className="truncate w-full sm:w-auto text-left">
+                    <span className="text-[8px] font-black uppercase text-[#9A87A9] tracking-wider block">Inspecting Assessment Blueprint</span>
+                    <h3 className="text-xs md:text-sm font-black uppercase tracking-tight text-white mt-0.5 truncate">{currentPaper.subject}</h3>
+                    <p className="text-[11px] font-bold text-[#9A87A9] uppercase tracking-wide mt-0.5 font-mono truncate">{currentPaper.classGroup}</p>
                   </div>
-                  <div className="sm:text-right font-mono text-[10px] text-slate-400 uppercase shrink-0">
-                    Instructor: <span className="text-white block mt-0.5 font-sans font-black text-xs">{currentPaper.teacher}</span>
+                  <div className="sm:text-right font-mono text-[10px] text-[#9A87A9] uppercase shrink-0 text-left">
+                    Instructor Staff: <span className="text-white block mt-0.5 font-sans font-black text-xs">{currentPaper.teacher}</span>
                   </div>
                 </div>
 
-                {/* 💡 THE DOUBLE SECTOR TAB CONTROLLER */}
-                <div className="flex bg-slate-100 p-1 rounded-lg border font-mono text-[10px] font-bold shrink-0 w-full">
+                {/* THE DOUBLE SECTOR TAB CONTROLLER */}
+                <div className="flex bg-[#FAF9FA] p-1 rounded-lg border border-[#9A87A9]/20 font-mono text-[10px] font-bold shrink-0 w-full">
                   <button 
                     onClick={() => setActiveSectorTab('obj')} 
-                    className={`flex-1 py-2 rounded text-center uppercase tracking-wide cursor-pointer flex items-center justify-center gap-1.5 transition-all ${activeSectorTab === 'obj' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+                    className={`flex-1 py-2 rounded-md text-center uppercase tracking-wide cursor-pointer flex items-center justify-center gap-1.5 transition-all font-mono ${activeSectorTab === 'obj' ? 'bg-[#2A1A63] text-white shadow-sm' : 'text-[#9A87A9] hover:text-[#2A1A63]'}`}
                   >
-                    <ListChecks className="w-3.5 h-3.5" /> Section A: Objectives ({currentPaper.objectivesList.length})
+                    <ListChecks className="w-3.5 h-3.5" /> Part A: Objectives ({currentPaper.objectivesList?.length || 0})
                   </button>
                   <button 
                     onClick={() => setActiveSectorTab('theory')} 
-                    className={`flex-1 py-2 rounded text-center uppercase tracking-wide cursor-pointer flex items-center justify-center gap-1.5 transition-all ${activeSectorTab === 'theory' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+                    className={`flex-1 py-2 rounded-md text-center uppercase tracking-wide cursor-pointer flex items-center justify-center gap-1.5 transition-all font-mono ${activeSectorTab === 'theory' ? 'bg-[#2A1A63] text-white shadow-sm' : 'text-[#9A87A9] hover:text-[#2A1A63]'}`}
                   >
-                    <Layers className="w-3.5 h-3.5" /> Section B: Theory ({currentPaper.theoriesList.length})
+                    <Layers className="w-3.5 h-3.5" /> Part B: Theory ({currentPaper.theoriesList?.length || 0})
                   </button>
                 </div>
 
                 {/* ITEM BANK PREVIEW RENDER CORE */}
-                <div className="border border-slate-200 rounded-lg p-3 md:p-4 bg-slate-50/50 w-full">
+                <div className="border border-[#9A87A9]/20 rounded-xl p-3 md:p-4 bg-[#FAF9FA]/40 w-full">
                   
-                  {/* TAB CARD VIEW A: OBJECTIVE MULTIPLE CHOICE MATRIX */}
+                  {/* TAB CARD VIEW A: OBJECTIVE MULTIPLE CHOICE */}
                   {activeSectorTab === 'obj' && (
                     <div className="space-y-4 w-full">
-                      {currentPaper.objectivesList.map((q) => (
-                        <div key={q.id} className="p-4 bg-white border border-slate-200/60 rounded-xl space-y-3 shadow-3xs w-full">
-                          <h4 className="text-xs md:text-sm font-bold text-slate-900 leading-relaxed uppercase select-text">
-                            <span className="font-mono text-slate-400 mr-1">[OBJ 0{q.num}]</span> {q.text}
-                          </h4>
-                          
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pl-2 w-full">
-                            {q.options.map((option, idx) => {
-                              const isCorrectAnswer = q.correctIndex === idx;
-                              return (
-                                <div 
-                                  key={idx} 
-                                  className={`px-3 py-2 border text-[11px] font-mono font-bold uppercase rounded-md tracking-tight ${
-                                    isCorrectAnswer 
-                                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800 font-black' 
-                                      : 'bg-slate-50/50 border-slate-100 text-slate-500'
-                                  }`}
-                                >
-                                  <span className="text-slate-400 mr-1">[0{idx + 1}]</span> {option} {isCorrectAnswer && "✓"}
-                                </div>
-                              );
-                            })}
+                      {(!currentPaper.objectivesList || currentPaper.objectivesList.length === 0) ? (
+                        <div className="text-center py-6 text-xs font-mono uppercase text-[#9A87A9] font-black">No Objective questions found inside this draft sheet.</div>
+                      ) : (
+                        currentPaper.objectivesList.map((q, idx) => (
+                          <div key={q.id || idx} className="p-4 bg-white border border-[#9A87A9]/20 rounded-xl space-y-3 shadow-3xs w-full text-left">
+                            <h4 className="text-xs md:text-sm font-bold text-slate-950 leading-relaxed uppercase select-text">
+                              <span className="font-mono text-[#9A87A9] mr-1">Question {q.num || idx + 1}:</span> {q.text}
+                            </h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pl-2 w-full">
+                              {q.options?.map((option, optIdx) => {
+                                const isCorrectAnswer = q.correctIndex === optIdx;
+                                return (
+                                  <div 
+                                    key={optIdx} 
+                                    className={`px-3 py-2 border text-[11px] font-mono font-bold uppercase rounded-md tracking-tight ${
+                                      isCorrectAnswer ? 'bg-emerald-50 border-emerald-200 text-emerald-800 font-black' : 'bg-[#FAF9FA] border-[#9A87A9]/10 text-slate-500'
+                                    }`}
+                                  >
+                                    <span className="text-[#9A87A9] mr-1">{String.fromCharCode(65 + optIdx)})</span> {option}
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))
+                      )}
                     </div>
                   )}
 
-                  {/* TAB CARD VIEW B: THEORIES &蓝BLUEPRINT RUBRIC DETAILS */}
+                  {/* TAB CARD VIEW B: THEORIES & RUBRICS */}
                   {activeSectorTab === 'theory' && (
                     <div className="space-y-4 w-full">
-                      {currentPaper.theoriesList.map((q) => (
-                        <div key={q.id} className="p-4 bg-white border border-slate-200/60 rounded-xl space-y-3 shadow-3xs w-full">
-                          <div className="flex justify-between items-start gap-2 border-b border-slate-50 pb-2 flex-wrap">
-                            <h4 className="text-xs md:text-sm font-bold text-slate-900 leading-relaxed uppercase select-text">
-                              <span className="font-mono text-slate-400 mr-1">[TH 0{q.num}]</span> Question Prompt
-                            </h4>
-                            <span className="text-[9px] font-mono font-bold text-slate-500 bg-slate-50 border px-2 py-0.5 rounded-sm shrink-0">Weight: {q.points} Marks</span>
+                      {(!currentPaper.theoriesList || currentPaper.theoriesList.length === 0) ? (
+                        <div className="text-center py-6 text-xs font-mono uppercase text-[#9A87A9] font-black">No Theory essay questions found inside this draft sheet.</div>
+                      ) : (
+                        currentPaper.theoriesList.map((q, idx) => (
+                          <div key={q.id || idx} className="p-4 bg-white border border-[#9A87A9]/20 rounded-xl space-y-3 shadow-3xs w-full text-left">
+                            <div className="flex justify-between items-center border-b border-[#FAF9FA] pb-2 flex-wrap">
+                              <h4 className="text-xs md:text-sm font-bold text-slate-950 leading-relaxed uppercase select-text">
+                                <span className="font-mono text-[#9A87A9] mr-1">Theory Prompt {q.num || idx + 1}:</span>
+                              </h4>
+                              <span className="text-[9px] font-mono font-black text-slate-900 bg-[#FAF9FA] border px-2 py-0.5 rounded-md shrink-0">Weight: {q.points} Marks</span>
+                            </div>
+                            <p className="text-xs md:text-sm font-bold text-slate-900 leading-relaxed uppercase select-text pl-1">{q.text}</p>
+                            <div className="p-3 bg-[#2A1A63] border border-[#2A1A63] rounded-xl space-y-1.5 font-mono text-[11px] tracking-tight text-white shadow-sm">
+                              <span className="text-[9px] text-[#9A87A9] font-black tracking-wider block uppercase">💡 Correction & Expected Scoring Rubric Key:</span>
+                              <p className="leading-relaxed font-bold">{q.rubricSchema || q.rubric}</p>
+                            </div>
                           </div>
-
-                          <p className="text-xs md:text-sm font-medium text-slate-800 leading-relaxed uppercase select-text pl-1">{q.text}</p>
-                          
-                          {/* Dedicated Evaluation Rubric Card Slot Container */}
-                          <div className="p-3 bg-slate-950 border border-slate-900 rounded-lg space-y-1.5 font-mono text-[11px] tracking-tight text-slate-300">
-                            <span className="text-[9px] text-amber-400 font-black tracking-wider block uppercase">💡 Expected Answer Rubric Grading Blueprint:</span>
-                            <p className="leading-relaxed uppercase font-medium">{q.rubricSchema}</p>
-                          </div>
-                        </div>
-                      ))}
+                        ))
+                      )}
                     </div>
                   )}
 
                 </div>
 
                 {/* Feedback Input Block */}
-                <div className="space-y-1.5 pt-1 w-full shrink-0">
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1 font-sans">
-                    <MessageSquare className="w-3.5 h-3.5 text-slate-400" /> Rejection Corrections / Adjustments Comments
+                <div className="space-y-1.5 pt-1 w-full shrink-0 text-left">
+                  <label className="block text-[10px] font-black text-[#2A1A63] uppercase tracking-wider flex items-center gap-1 font-sans">
+                    <MessageSquare className="w-3.5 h-3.5 text-[#9A87A9]" /> Moderator Adjustment / Correction Notes
                   </label>
                   <textarea
                     value={rejectionFeedback}
                     onChange={(e) => setRejectionFeedback(e.target.value)}
-                    placeholder="If executing a rejection drop back to faculty workspace, specify the mandatory adjustments text guidelines here..."
-                    className="w-full h-16 px-3 py-2 bg-slate-50 border border-slate-200 text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-slate-950 transition-all rounded-md resize-none leading-relaxed font-sans"
+                    placeholder="If sending this paper back for corrections, write down the required adjustments here for the teacher..."
+                    className="w-full h-16 px-3 py-2 bg-[#FAF9FA] border border-[#9A87A9]/40 text-xs font-bold text-slate-950 placeholder-[#9A87A9]/70 focus:outline-none focus:bg-white focus:border-[#2A1A63] transition-all rounded-lg resize-none leading-relaxed font-sans shadow-3xs"
                   />
                 </div>
 
               </div>
 
-              {/* Lower Operation Action Triggers row cells */}
-              <div className="pt-3 border-t border-slate-100 flex justify-end gap-2 shrink-0 w-full">
+              {/* Lower Operation Action Triggers */}
+              <div className="pt-3 border-t border-[#FAF9FA] flex justify-end gap-2 shrink-0 w-full">
                 <button
                   onClick={() => setModalConfig({ isOpen: true, type: 'reject' })}
-                  className="px-4 py-2 border border-rose-200 hover:bg-rose-50 text-rose-600 text-xs font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer flex items-center gap-1 shadow-3xs"
+                  className="px-4 py-2 border border-rose-200 hover:bg-rose-50 text-[#C62927] text-xs font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer flex items-center gap-1 shadow-3xs font-black"
                 >
-                  <XCircle className="w-4 h-4" /> Reject Back
+                  <XCircle className="w-4 h-4" /> Request Adjustments
                 </button>
                 <button
                   onClick={() => setModalConfig({ isOpen: true, type: 'approve' })}
-                  className="px-4 py-2 bg-slate-950 hover:bg-slate-800 text-white text-xs font-bold uppercase tracking-wider rounded-lg transition-all shadow-3xs cursor-pointer flex items-center gap-1"
+                  className="px-4 py-2 bg-[#2A1A63] text-white text-xs font-black uppercase tracking-wider rounded-lg transition-all shadow-md cursor-pointer flex items-center gap-1"
                 >
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Grant Clearance
+                  <CheckCircle2 className="w-4 h-4 text-white" /> Grant Clearance
                 </button>
               </div>
             </div>
           ) : (
-            <div className="w-full h-full flex flex-col justify-center items-center text-slate-400 italic text-xs font-sans">
-              Select an entry envelope item from the vetting list queue to open the active preview sandbox pane.
+            <div className="w-full h-full flex flex-col justify-center items-center text-[#9A87A9] font-black uppercase tracking-wide font-mono text-xs py-24">
+              Select a question sheet paper from the queue list to initialize the vetting preview sandbox pane.
             </div>
           )}
         </section>
@@ -268,24 +317,45 @@ export default function AdminApproval({ onNavigateBack }) {
       {/* Confirmation Modals */}
       <ConfirmationModal 
         isOpen={modalConfig.isOpen}
-        title={modalConfig.type === 'approve' ? "Authorize Exam Deployment" : "Reject Question Sheet"}
+        title={modalConfig.type === 'approve' ? "Authorize Examination Paper Release" : "Return Paper for Corrections"}
         message={modalConfig.type === 'approve'
-          ? `Are you confident with the structure and content quality of the question paper for ${currentPaper?.subject}? Approving locks it for live CBT delivery.`
-          : `Confirm kicking ${currentPaper?.subject} back to the teacher's workspace workbench for mandatory adjustments?`
+          ? `Are you completely satisfied with the quality and curriculum alignment of the questions for ${currentPaper?.subject}? Authorization deploys it live for testing schedules.`
+          : `Are you sure you want to kick the question sheets for ${currentPaper?.subject} back to the teacher profile workbench for modifications?`
         }
-        confirmLabel={modalConfig.type === 'approve' ? "Approve & Publish" : "Reject to Teacher"}
-        cancelLabel="Cancel Audit"
+        confirmLabel={modalConfig.type === 'approve' ? "Approve & Deploy Paper" : "Return to Teacher"}
+        cancelLabel="Go Back"
         onConfirm={modalConfig.type === 'approve' ? handleExecuteApproval : handleExecuteRejection}
         onCancel={() => setModalConfig({ isOpen: false, type: null })}
         summaryData={{
           "Course Subject": currentPaper?.subject,
-          "Class Partition": currentPaper?.classGroup,
-          "Workflow Action": modalConfig.type === 'approve' ? "MARK_READY_FOR_CBT" : "RETURN_FOR_MUTATION_DRAFT"
+          "Target Cohort Group": currentPaper?.classGroup,
+          "Moderator Routing Action": modalConfig.type === 'approve' ? "SIGN_OFF_AND_PUBLISH_LIVE" : "DISPATCH_FOR_CORRECTIONS"
         }}
       />
 
-      <footer className="w-full border-t border-slate-200/60 bg-white py-2 text-center text-[9px] font-bold text-slate-400 tracking-wider font-mono uppercase px-4 shrink-0">
-        StartriteIntranet School Administration Core Layer
+      {/* CORE FRAME NOTIFICATION ERROR OVERLAYS */}
+      {errorModal.isOpen && (
+        <div className="fixed inset-0 bg-slate-950/40 z-[30000] flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-white border border-[#9A87A9]/40 p-6 rounded-xl shadow-2xl space-y-4 text-left font-mono">
+            <div className="flex items-center gap-2 text-[#C62927] font-sans font-black text-xs uppercase tracking-tight border-b border-[#FAF9FA] pb-2">
+              <AlertTriangle className="w-4 h-4" /> {errorModal.title}
+            </div>
+            <p className="text-xs text-slate-500 font-bold font-sans leading-relaxed">{errorModal.message}</p>
+            <div className="flex justify-end pt-1">
+              <button 
+                type="button"
+                onClick={() => setErrorModal(prev => ({ ...prev, isOpen: false }))} 
+                className="px-4 py-2 bg-[#2A1A63] text-white font-bold text-xs uppercase tracking-wider rounded-lg shadow-md font-sans"
+              >
+                Dismiss Notice
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <footer className="w-full border-t border-[#9A87A9]/20 bg-white py-2.5 text-center text-[9px] font-black text-[#9A87A9] tracking-wider font-mono uppercase shrink-0">
+        Start-Rite Schools Corporate Vetting & Quality Assurance Systems Infrastructure © 2026
       </footer>
 
     </div>

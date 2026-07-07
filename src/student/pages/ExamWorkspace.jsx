@@ -1,56 +1,275 @@
-import React, { useState, useEffect } from 'react';
-import { Clock, ChevronLeft, ChevronRight, AlertCircle, Image as ImageIcon, ShieldAlert, Monitor, Lock } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Clock, ChevronLeft, ChevronRight, ShieldAlert, CheckCircle, Lock, Loader2, Award, Sparkles } from 'lucide-react';
 import { saveAnswerLocally } from '../../core/offlineDb';
 import { useOfflineSync } from '../../core/useOfflineSync';
+import { apiRequest } from '../../core/api';
+import Logo from '../../shared/Logo';
 
-export default function ExamWorkspace({ student, onExamSubmit }) {
-  // 💡 1. ACTIVATE THE SEAMLESS OFFLINE BACKEND AUTOMATIC BACKGROUND SYNC
-  // Targets dynamic syncing packets every 15 seconds to minimize LAN router pressure points
-  const syncStatus = useOfflineSync('asm_3', student?.id || 'VTS-2026-001', 15000);
+export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
+  // 🛰️ AUTOMATIC LAN BUFFER LOCAL SYNC PIPELINE
+  const syncStatus = useOfflineSync(assessmentId, student?.id || 'VTS-2026', 15000);
 
-  // Master Question Dataset Matrix
-  const [examData] = useState({
-    objective: [
-      { id: 'obj_1', number: 1, text: 'Study the network infrastructure diagram below. Which topology type is displayed where all endpoints branch off one single backbone line?', imageUrl: 'https://images.unsplash.com/photo-1544197150-b99a580bb7a8?auto=format&fit=crop&w=600&q=80', options: ['Ring Topology Layout', 'Star Hub Layout', 'Bus Backbone Line', 'Mesh Network Layout'] },
-      { id: 'obj_2', number: 2, text: 'Evaluate the database architecture rule. Which form normal structural model targets dropping partial primary dependencies cleanly?', options: ['First Normal Form (1NF)', 'Second Normal Form (2NF)', 'Third Normal Form (3NF)', 'Boyce-Codd Normal Form (BCNF)'] },
-      { id: 'obj_3', number: 3, text: 'Which internal hardware module processes volatile temporary runtime instruction threads direct for the CPU register caches?', options: ['Solid State Disk (SSD)', 'Read Only Memory (ROM)', 'Random Access Memory (RAM)', 'Graphics Processing Core (GPU)'] }
-    ],
-    theory: [
-      { id: 'th_1', number: 1, text: 'Examine the microprocessor chip outline illustration. Explain how clock cycles govern binary ingestion calculations inside the Arithmetic Logic Unit.', imageUrl: 'https://images.unsplash.com/photo-1601524909162-be87252be298?auto=format&fit=crop&w=600&q=80' },
-      { id: 'th_2', number: 2, text: 'Detail why a school computing lab operating an isolated intranet local server remains immune to public internet breaches, and specify two physical security threats to manage.' }
-    ]
-  });
-
+  // Core structural memory registers
+  const [questions, setQuestions] = useState({ objective: [], theory: [] });
+  const [isLoading, setIsLoading] = useState(true);
   const [activeSection, setActiveSection] = useState('objective'); 
   const [activeIndices, setActiveIndices] = useState({ objective: 0, theory: 0 });
   const [answers, setAnswers] = useState({});
-  const [timeLeft, setTimeLeft] = useState(3600); 
+  const [timeLeft, setTimeLeft] = useState(null); 
   const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false); 
+  const [examMeta, setExamMeta] = useState(null);
 
-  // SECURITY ENFORCEMENT PROTOCOLS STATES
+  const timerStorageKey = `exam_time_left_${assessmentId}_${student?.id || 'VTS-2026'}`;
+  const localStorageKey = `exam_strikes_${assessmentId}_${student?.id || 'VTS-2026'}`;
+  
+  const [strikeCounter, setStrikeCounter] = useState(() => {
+    const savedStrikes = localStorage.getItem(localStorageKey);
+    return savedStrikes ? parseInt(savedStrikes, 10) : 0;
+  });
   const [violationType, setViolationType] = useState(null); 
-  const [strikeCounter, setStrikeCounter] = useState(0);
-  const [isHardLocked, setIsHardLocked] = useState(false);
+  const [isHardLocked, setIsHardLocked] = useState(() => {
+    const savedStrikes = localStorage.getItem(localStorageKey);
+    return savedStrikes ? parseInt(savedStrikes, 10) >= 3 : false;
+  });
 
-  // 1. Countdown Timer decrements
-  useEffect(() => {
-    if (timeLeft <= 0 || isHardLocked) return;
-    const interval = setInterval(() => setTimeLeft((p) => p - 1), 1000);
-    return () => clearInterval(interval);
-  }, [timeLeft, isHardLocked]);
+  const [timeExtensionAlert, setTimeExtensionAlert] = useState({ isVisible: false, addedMinutes: 0 });
+  const [isClockFlashing, setIsClockFlashing] = useState(false);
+  const prevTimeLeftRef = useRef(null);
 
-  // 2. Anti-Cheat Interceptions
+  // ─────────────────────────────────────────────────────────────────
+  // EFFECT HOOK: Ingest Questions & Reconcile Persistent Clock
+  // ─────────────────────────────────────────────────────────────────
   useEffect(() => {
-    const triggerViolationAlert = (type) => {
-      setStrikeCounter(prev => {
-        const nextCount = prev + 1;
-        if (nextCount >= 3) {
-          setIsHardLocked(true); 
-        } else {
-          setViolationType(type); 
+    const fetchDatabaseExamSheet = async () => {
+      try {
+        const response = await apiRequest(`api/v1/teacher/assessments/${assessmentId}/questions`, { method: 'GET' });
+        const data = await response.json();
+
+        const feedRes = await apiRequest('api/v1/student/lobby/active-feed', { method: 'GET' });
+        const feedData = await feedRes.json();
+
+        if (response.ok && feedRes.ok) {
+          const dbQuestions = data.questions || [];
+          setExamMeta(feedData.exam);
+          
+          const objectives = dbQuestions.filter(q => q.type === 'Objective' || q.type === 'True/False').map((q, idx) => ({
+            id: q.id,
+            number: idx + 1,
+            text: q.question_text,
+            imageUrl: q.image_url,
+            options: typeof q.options === 'string' ? JSON.parse(q.options) : (q.options || [])
+          }));
+
+          const theories = dbQuestions.filter(q => q.type === 'Theory').map((q, idx) => ({
+            id: q.id,
+            number: idx + 1,
+            text: q.question_text,
+            imageUrl: q.image_url
+          }));
+
+          setQuestions({ objective: objectives, theory: theories });
+          
+          let finalizedSecondsLeft = 3600;
+          const localStoredTime = localStorage.getItem(timerStorageKey);
+
+          if (localStoredTime !== null) {
+            finalizedSecondsLeft = Math.max(0, parseInt(localStoredTime, 10));
+          } else if (feedData.exam) {
+            const rawDuration = parseInt(feedData.exam.duration, 10);
+            const durationMinutes = isNaN(rawDuration) ? 60 : rawDuration;
+            finalizedSecondsLeft = durationMinutes * 60;
+          }
+
+          setTimeLeft(finalizedSecondsLeft);
+          prevTimeLeftRef.current = finalizedSecondsLeft;
+          localStorage.setItem(timerStorageKey, finalizedSecondsLeft.toString());
+
+          if (objectives.length === 0 && theories.length > 0) {
+            setActiveSection('theory');
+          }
+
+          let activeStrikes = parseInt(localStorage.getItem(localStorageKey), 10) || 0;
+          if (!document.fullscreenElement && activeStrikes < 3 && !showSuccessModal) {
+            activeStrikes = activeStrikes + 1;
+            localStorage.setItem(localStorageKey, activeStrikes);
+            setStrikeCounter(activeStrikes);
+            
+            if (activeStrikes >= 3) {
+              setIsHardLocked(true);
+            } else {
+              setViolationType('fullscreen');
+            }
+          }
+
+          await apiRequest(`api/v1/student/assessments/${assessmentId}/sync-telemetry`, {
+            method: 'POST',
+            body: JSON.stringify({
+              question_id: dbQuestions[0]?.id || 1,
+              answered_index: null,
+              theory_response: null,
+              security_strikes: activeStrikes, 
+              current_seconds_remaining: activeStrikes >= 3 ? 0 : finalizedSecondsLeft,
+              objective_progress_string: `0 / ${objectives.length}`,
+              theory_progress_string: `0 / ${theories.length}`
+            })
+          });
+
+          if (activeStrikes >= 3) {
+            localStorage.removeItem(localStorageKey);
+            localStorage.removeItem(timerStorageKey);
+            setShowSuccessModal(true);
+          }
         }
-        return nextCount;
+      } catch (error) {
+        console.error(error);
+        setTimeLeft(3600); 
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (assessmentId) fetchDatabaseExamSheet();
+  }, [assessmentId]);
+
+  // ─────────────────────────────────────────────────────────────────
+  // EFFECT HOOK: Live Proctor Dynamic Listener Loops
+  // ─────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (isLoading || showSuccessModal) return;
+
+    const checkProctorCommandUpdates = async () => {
+      try {
+        const monitorRes = await apiRequest(`api/v1/teacher/monitor/${assessmentId}`, { method: 'GET' });
+        const monitorData = await monitorRes.json();
+
+        if (monitorRes.ok && monitorData.students) {
+          const currentStudentId = student?.id || 'VTS-2026';
+          const activeSession = monitorData.students.find(s => 
+            String(s.student_profile_id) === String(currentStudentId) || String(s.id) === String(currentStudentId)
+          );
+          
+          if (activeSession) {
+            if (activeSession.status.includes('Submitted') || activeSession.is_submitted == true) {
+              localStorage.removeItem(localStorageKey);
+              localStorage.removeItem(timerStorageKey);
+              setShowSuccessModal(true);
+              return;
+            }
+
+            const serverViolations = parseInt(activeSession.violations, 10) || 0;
+            if (serverViolations === 0 && strikeCounter > 0) {
+              localStorage.setItem(localStorageKey, '0');
+              setStrikeCounter(0);
+              setIsHardLocked(false);
+              setViolationType(null);
+            }
+
+            const currentMasterSeconds = parseInt(activeSession.seconds_remaining, 10);
+            if (!isNaN(currentMasterSeconds) && prevTimeLeftRef.current !== null) {
+              const clockDifference = currentMasterSeconds - prevTimeLeftRef.current;
+              
+              if (clockDifference >= 30) { 
+                const addedMins = Math.round(clockDifference / 60);
+                setTimeLeft(currentMasterSeconds);
+                prevTimeLeftRef.current = currentMasterSeconds;
+                localStorage.setItem(timerStorageKey, currentMasterSeconds.toString());
+                
+                setIsClockFlashing(true);
+                setTimeExtensionAlert({ isVisible: true, addedMinutes: addedMins || 5 });
+                
+                setTimeout(() => setIsClockFlashing(false), 5000);
+                setTimeout(() => setTimeExtensionAlert({ isVisible: false, addedMinutes: 0 }), 6000);
+              } else {
+                prevTimeLeftRef.current = timeLeft;
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    const monitorIntervalId = setInterval(checkProctorCommandUpdates, 4000);
+    return () => clearInterval(monitorIntervalId);
+  }, [isLoading, showSuccessModal, assessmentId, student, timeLeft, strikeCounter]);
+
+  // ─────────────────────────────────────────────────────────────────
+  // EFFECT HOOK: Live Clock Ticker Pipeline
+  // ─────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (timeLeft === null || isHardLocked || isLoading || showSuccessModal) return;
+
+    if (timeLeft <= 0) {
+      handleFinalEmergencyAutoSubmit();
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setTimeLeft(p => {
+        if (p === null || p <= 1) {
+          clearInterval(interval);
+          handleFinalEmergencyAutoSubmit();
+          return 0;
+        }
+        const nextTime = p - 1;
+        prevTimeLeftRef.current = nextTime;
+        localStorage.setItem(timerStorageKey, nextTime.toString());
+        return nextTime;
       });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [timeLeft, isHardLocked, isLoading, showSuccessModal]);
+
+  const handleFinalEmergencyAutoSubmit = () => {
+    localStorage.removeItem(localStorageKey);
+    localStorage.removeItem(timerStorageKey);
+    setShowSuccessModal(true);
+  };
+
+  // Anti-Cheat Surveillance Rule Set Handlers
+  useEffect(() => {
+    if (isLoading || isHardLocked || showSuccessModal) return; 
+
+    const triggerViolationAlert = async (type) => {
+      const currentStrikes = parseInt(localStorage.getItem(localStorageKey), 10) || 0;
+      const nextCount = currentStrikes + 1;
+      
+      localStorage.setItem(localStorageKey, nextCount);
+      setStrikeCounter(nextCount);
+      
+      if (nextCount >= 3) {
+        setIsHardLocked(true); 
+      } else {
+        setViolationType(type); 
+      }
+
+      const currentQ = questions[activeSection]?.[activeIndices[activeSection]];
+      if (currentQ) {
+        const objCount = Object.keys(answers).filter(k => questions.objective.some(q => q.id === parseInt(k, 10))).length;
+        const thyCount = Object.keys(answers).filter(k => questions.theory.some(q => q.id === parseInt(k, 10))).length;
+
+        await apiRequest(`api/v1/student/assessments/${assessmentId}/sync-telemetry`, {
+          method: 'POST',
+          body: JSON.stringify({
+            question_id: currentQ.id,
+            answered_index: activeSection === 'objective' ? (answers[currentQ.id] ?? null) : null,
+            theory_response: activeSection === 'theory' ? (answers[currentQuestion.id] ?? null) : null,
+            security_strikes: nextCount, 
+            current_seconds_remaining: nextCount >= 3 ? 0 : timeLeft,
+            objective_progress_string: `${objCount} / ${questions.objective.length}`,
+            theory_progress_string: `${thyCount} / ${questions.theory.length}`
+          })
+        });
+
+        if (nextCount >= 3) {
+          localStorage.removeItem(localStorageKey);
+          localStorage.removeItem(timerStorageKey);
+          setShowSuccessModal(true);
+        }
+      }
     };
 
     const blockAction = (e, type) => {
@@ -63,7 +282,7 @@ export default function ExamWorkspace({ student, onExamSubmit }) {
     const handleRightClick = (e) => e.preventDefault(); 
     
     const handleFullscreenChange = () => {
-      if (!document.fullscreenElement && !isHardLocked) {
+      if (!document.fullscreenElement && !isHardLocked && !showSuccessModal) {
         triggerViolationAlert('fullscreen');
       }
     };
@@ -79,37 +298,39 @@ export default function ExamWorkspace({ student, onExamSubmit }) {
       document.removeEventListener('contextmenu', handleRightClick);
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
     };
-  }, [isHardLocked]);
+  }, [isHardLocked, isLoading, showSuccessModal, questions, activeSection, activeIndices, answers, timeLeft]);
 
   const handleRequestRestoreFullscreen = () => {
     const docEl = document.documentElement;
     if (docEl.requestFullscreen) {
       docEl.requestFullscreen()
         .then(() => setViolationType(null))
-        .catch(() => alert("Re-entry blocked by browser sandbox bounds."));
+        .catch(() => alert("Could not restore fullscreen. Please tell your supervisor."));
     }
   };
 
   const handleInstructorOverrideClearance = () => {
-    const passkey = prompt("ENTER INSTRUCTOR / ADMIN NETWORK OVERRIDE PRIVILEGE KEY:");
+    const passkey = prompt("ENTER INSTRUCTOR / OVERRIDE PASSWORD:");
     if (passkey === "override12") {
+      localStorage.setItem(localStorageKey, '0');
       setStrikeCounter(0);
       setIsHardLocked(false);
       setViolationType(null);
       document.documentElement.requestFullscreen().catch(() => {});
     } else if (passkey !== null) {
-      alert("INVALID AUTHORIZATION PASSKEY CELL // ACCESS REJECTED");
+      alert("Invalid password.");
     }
   };
 
   const formatTime = (seconds) => {
+    if (seconds === null) return "00:00";
     const m = Math.floor(seconds / 60).toString().padStart(2, '0');
     const s = (seconds % 60).toString().padStart(2, '0');
     return `${m}:${s}`;
   };
 
-  const currentQuestionsList = examData[activeSection];
-  const currentIndex = activeIndices[activeSection];
+  const currentQuestionsList = questions[activeSection] || [];
+  const currentIndex = activeIndices[activeSection] || 0;
   const currentQuestion = currentQuestionsList[currentIndex];
 
   const handleNextQuestion = () => {
@@ -124,237 +345,293 @@ export default function ExamWorkspace({ student, onExamSubmit }) {
     }
   };
 
-  // 💡 2. OBJECTIVE SELECTION INTERCEPTOR: Write instantly to local memory storage disk asynchronously
   const handleSelectObjectiveOption = async (optionIdx) => {
-    setAnswers({ ...answers, [currentQuestion.id]: optionIdx });
+    const updatedAnswers = { ...answers, [currentQuestion.id]: optionIdx };
+    setAnswers(updatedAnswers);
+
+    const objCount = Object.keys(updatedAnswers).filter(k => questions.objective.some(q => q.id === parseInt(k, 10))).length;
+    const thyCount = Object.keys(updatedAnswers).filter(k => questions.theory.some(q => q.id === parseInt(k, 10))).length;
 
     const answerPacket = {
       question_id: currentQuestion.id,
       answered_index: optionIdx,
       theory_response: null,
-      security_strikes: strikeCounter
+      security_strikes: strikeCounter,
+      current_seconds_remaining: timeLeft,
+      objective_progress_string: `${objCount} / ${questions.objective.length}`,
+      theory_progress_string: `${thyCount} / ${questions.theory.length}`
     };
-
     await saveAnswerLocally(answerPacket);
   };
 
-  // 💡 3. THEORETICAL TEXT FIELDS KEYSTROKE INTERCEPTOR
   const handleTypeTheoryResponse = async (textValue) => {
-    setAnswers({ ...answers, [currentQuestion.id]: textValue });
+    const updatedAnswers = { ...answers, [currentQuestion.id]: textValue };
+    setAnswers(updatedAnswers);
+
+    const objCount = Object.keys(updatedAnswers).filter(k => questions.objective.some(q => q.id === parseInt(k, 10))).length;
+    const thyCount = Object.keys(updatedAnswers).filter(k => questions.theory.some(q => q.id === parseInt(k, 10))).length;
 
     const answerPacket = {
       question_id: currentQuestion.id,
       answered_index: null,
       theory_response: textValue,
-      security_strikes: strikeCounter
+      security_strikes: strikeCounter,
+      current_seconds_remaining: timeLeft,
+      objective_progress_string: `${objCount} / ${questions.objective.length}`,
+      theory_progress_string: `${thyCount} / ${questions.theory.length}`
     };
-
     await saveAnswerLocally(answerPacket);
   };
 
+  if (isLoading || timeLeft === null) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col justify-center items-center font-mono text-xs uppercase text-[#9A87A9] tracking-widest gap-2">
+        <Loader2 className="w-5 h-5 animate-spin text-[#2A1A63]" />
+        Loading your Start-Rite question paper safely...
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[#fcfcfc] flex flex-col justify-between select-none relative">
+    <div className="min-h-screen bg-[#FAF9FA] flex flex-col justify-between select-none relative w-full overflow-x-hidden text-[#2A1A63]">
       
-      {/* LOCKOUT OVERLAY SCREEN */}
+      {/* CLOCK EXTENSION FLOATING ALERT BANNER */}
+      {timeExtensionAlert.isVisible && (
+        <div className="fixed top-24 right-6 z-[99999] bg-emerald-600 text-white font-sans text-xs px-4 py-3.5 rounded-xl shadow-2xl flex items-center gap-3 animate-bounce">
+          <Sparkles className="w-4 h-4 text-emerald-200" />
+          <div>
+            <span className="font-black block">Extra Time Added!</span>
+            <span className="text-[10px] text-emerald-100">Your supervisor added +{timeExtensionAlert.addedMinutes} minutes to your clock.</span>
+          </div>
+        </div>
+      )}
+
+      {/* HARD LOCKOUT OVERLAY */}
       {isHardLocked && (
-        <div className="fixed inset-0 bg-slate-950 z-[10000] flex flex-col justify-center items-center text-center p-6 select-none">
-          <div className="w-full max-w-md bg-white border border-slate-200 rounded-xl p-8 shadow-2xl space-y-5">
-            <div className="w-14 h-14 bg-rose-600 text-white rounded-full flex items-center justify-center mx-auto shadow-md">
+        <div className="fixed inset-0 bg-slate-950/90 z-[20000] flex flex-col justify-center items-center text-center p-6 backdrop-blur-md">
+          <div className="w-full max-w-md bg-white border border-[#9A87A9]/40 rounded-xl p-8 shadow-2xl space-y-5">
+            <div className="w-14 h-14 bg-[#C62927] text-white rounded-full flex items-center justify-center mx-auto shadow-md">
               <Lock className="w-6 h-6" />
             </div>
             <div>
-              <h3 className="text-sm font-black text-slate-950 uppercase tracking-tight">TERMINAL ACCOUNT LOCKED OUT</h3>
-              <p className="text-xs text-rose-600 font-bold font-mono uppercase mt-1">Total Integrity Breaches: {strikeCounter} / 3 Strikes Met</p>
+              <h3 className="text-base font-black uppercase text-slate-950">Workstation Locked</h3>
+              <p className="text-xs text-[#C62927] font-bold font-mono uppercase mt-1">Rules Broken: {strikeCounter} / 3 Warning Strikes</p>
               <p className="text-xs text-slate-500 font-medium leading-relaxed mt-4">
-                This workstation terminal has been completely frozen due to repeated rule violations (attempting to copy text, paste shortcuts, or exit fullscreen mode). 
-              </p>
-              <p className="text-[11px] text-slate-400 font-medium bg-slate-50 border p-2.5 rounded mt-3 leading-relaxed">
-                💡 <span className="font-bold text-slate-700">Presentation Note:</span> Type <code className="font-mono bg-slate-100 font-black text-rose-600 px-1 rounded">override12</code> below to simulate unlocking the screen.
+                This screen has been locked because the application rules were skipped multiple times (leaving fullscreen or attempting shortcuts). Please wait for an invigilator to inspect your station.
               </p>
             </div>
-            <button onClick={handleInstructorOverrideClearance} className="w-full py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs uppercase tracking-wider rounded cursor-pointer text-center">
-              Apply Instructor Authorization Key
+            <button onClick={handleInstructorOverrideClearance} className="w-full py-3 bg-[#C62927] hover:opacity-90 text-white font-bold text-xs uppercase tracking-wider rounded-lg transition-all shadow-md">
+              Enter Supervisor Key
             </button>
           </div>
         </div>
       )}
 
-      {/* WARNING MODAL LAYER */}
-      {violationType && !isHardLocked && (
-        <div className="fixed inset-0 bg-slate-900/60 z-[9999] flex flex-col justify-center items-center text-center p-6 backdrop-blur-xs">
-          <div className="w-full max-w-sm bg-white border border-slate-200 rounded-xl p-6 shadow-2xl space-y-4">
+      {/* WARNING POPUP ALERTS */}
+      {violationType && !isHardLocked && !showSuccessModal && (
+        <div className="fixed inset-0 bg-slate-950/40 z-[9999] flex flex-col justify-center items-center text-center p-6 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-white border border-[#9A87A9]/30 rounded-xl p-6 shadow-2xl space-y-4">
             <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto border border-amber-100">
-              <ShieldAlert className="w-6 h-6" />
+              <ShieldAlert className="w-6 h-6 text-[#C62927]" />
             </div>
             <div>
-              <h3 className="text-xs font-black text-slate-950 uppercase tracking-tight">Warning: Security Alert Triggered</h3>
-              <p className="text-[11px] text-amber-600 font-bold font-mono uppercase mt-0.5">Alert Strike counter: {strikeCounter} / 3</p>
+              <h3 className="text-sm font-black uppercase text-slate-950">Security Rule Notice</h3>
+              <p className="text-[11px] text-[#C62927] font-black font-mono uppercase mt-0.5">Warning Strike: {strikeCounter} / 3</p>
               <p className="text-xs text-slate-500 font-medium leading-relaxed mt-3">
-                {violationType === 'copy' && "Copying question text blocks is strictly forbidden by the system engine rules."}
-                {violationType === 'paste' && "Pasting external text paragraphs into submission fields is completely blocked."}
-                {violationType === 'fullscreen' && "Exiting fullscreen layout structures triggers system security logs."}
+                {violationType === 'copy' && "Copying text is completely locked on this examination panel."}
+                {violationType === 'paste' && "Pasting external content inside answers is disabled."}
+                {violationType === 'fullscreen' && "Exiting your test screen layout triggers a warning strike code."}
               </p>
             </div>
-            <button onClick={handleRequestRestoreFullscreen} className="w-full py-2.5 bg-slate-950 hover:bg-slate-800 text-white font-bold text-xs uppercase tracking-wider rounded-sm cursor-pointer">
-              Re-engage Fullscreen & Continue
+            <button onClick={handleRequestRestoreFullscreen} className="w-full py-2.5 bg-[#2A1A63] text-white font-bold text-xs uppercase tracking-wider rounded-lg shadow-sm">
+              Return to Test Mode
             </button>
           </div>
         </div>
       )}
 
-      {/* Top Header Row */}
-      <header className="w-full bg-white border-b border-slate-200/80 px-6 py-4 sticky top-0 z-40">
+      {/* HEADER COHORT BAR */}
+      <header className="w-full bg-white border-b border-[#9A87A9]/30 px-6 py-3 sticky top-0 z-40 shadow-3xs">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-slate-900 text-white font-bold text-xs flex items-center justify-center rounded">
-              {student?.initials || 'DS'}
+            <div className="w-9 h-9 bg-[#2A1A63] text-white font-black text-xs flex items-center justify-center rounded-lg shadow-sm uppercase">
+              {student?.initials || student?.name?.substring(0,2) || 'EX'}
             </div>
             <div>
-              <h2 className="text-xs font-bold text-slate-900 leading-none uppercase">{student?.name || 'DUNG STEPHEN NYAM'}</h2>
-              <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-wider font-mono">{student?.classGroup || 'DESK ROOM JSS3'}</p>
+              <h2 className="text-xs font-black text-slate-950 uppercase tracking-tight">{student?.name}</h2>
+              <p className="text-[10px] font-bold text-[#9A87A9] mt-0.5 uppercase tracking-wider font-mono">{student?.details?.class_group || 'Start-Rite Student'}</p>
             </div>
           </div>
 
           <div className="flex items-center gap-4">
-            {/* 💡 PREMIUM DYNAMIC CONNECTION BADGE */}
             <div className={`px-2.5 py-1.5 text-[9px] font-mono font-bold uppercase tracking-wider rounded border flex items-center gap-1.5 ${
-              syncStatus === 'Synced' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-              syncStatus === 'Syncing...' ? 'bg-blue-50 text-blue-700 border-blue-200 animate-pulse' :
-              'bg-amber-50 text-amber-700 border-amber-200'
+              syncStatus === 'Synced' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-blue-50 text-blue-700 border-blue-200 animate-pulse'
             }`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${syncStatus === 'Synced' ? 'bg-emerald-600' : syncStatus === 'Syncing...' ? 'bg-blue-600' : 'bg-amber-500 animate-ping'}`} />
-              LAN BUFFER: {syncStatus === 'Offline_Saving_Local' ? 'LOCAL RECOVERY SAVE' : syncStatus}
+              <span className={`w-1.5 h-1.5 rounded-full ${syncStatus === 'Synced' ? 'bg-emerald-600' : 'bg-blue-600'}`} />
+              Saved Copy: {syncStatus === 'Synced' ? 'Securely Updated' : 'Saving...'}
             </div>
 
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded text-slate-800 font-mono text-sm font-bold shadow-2xs">
-              <Clock className="w-4 h-4 text-slate-400" />
+            <div className={`flex items-center gap-2 px-3 py-1.5 border rounded-lg text-sm font-bold shadow-3xs font-mono ${
+              isClockFlashing 
+                ? 'bg-emerald-50 border-emerald-400 text-emerald-600 ring-2 ring-emerald-400 scale-105' 
+                : timeLeft < 300 ? 'bg-rose-50 border-rose-300 text-[#C62927] animate-pulse' : 'bg-[#FAF9FA] border-[#9A87A9]/40 text-slate-950'
+            }`}>
+              <Clock className={`w-4 h-4 ${isClockFlashing ? 'text-emerald-600' : timeLeft < 300 ? 'text-[#C62927]' : 'text-[#9A87A9]'}`} />
               <span>{formatTime(timeLeft)}</span>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Section Switcher Tabs */}
-      <div className="w-full max-w-7xl mx-auto px-4 py-2 mt-4 flex gap-2">
-        <button onClick={() => { setActiveSection('objective'); }} className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded cursor-pointer ${activeSection === 'objective' ? 'bg-slate-900 text-white' : 'bg-white border text-slate-500'}`}>Section A: Objectives</button>
-        <button onClick={() => { setActiveSection('theory'); }} className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded cursor-pointer ${activeSection === 'theory' ? 'bg-slate-900 text-white' : 'bg-white border text-slate-500'}`}>Section B: Theory</button>
+      {/* SECTION SELECTORS */}
+      <div className="w-full max-w-7xl mx-auto px-4 py-2 mt-4 flex gap-2 shrink-0">
+        {questions.objective.length > 0 && (
+          <button onClick={() => setActiveSection('objective')} className={`px-4 py-2 text-xs font-black uppercase tracking-wider rounded-lg border cursor-pointer transition-all ${activeSection === 'objective' ? 'bg-[#2A1A63] border-[#2A1A63] text-white shadow-sm' : 'bg-white text-[#9A87A9] hover:bg-slate-50 border-[#9A87A9]/30'}`}>Section A: Objectives</button>
+        )}
+        {questions.theory.length > 0 && (
+          <button onClick={() => setActiveSection('theory')} className={`px-4 py-2 text-xs font-black uppercase tracking-wider rounded-lg border cursor-pointer transition-all ${activeSection === 'theory' ? 'bg-[#2A1A63] border-[#2A1A63] text-white shadow-sm' : 'bg-white text-[#9A87A9] hover:bg-slate-50 border-[#9A87A9]/30'}`}>Section B: Theory</button>
+        )}
       </div>
 
-      {/* Main Form Split Viewports Layout Body */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 md:grid-cols-4 gap-6 my-auto items-stretch">
-        
-        {/* Left Workspace Panel */}
-        <section className="md:col-span-3 bg-white border border-slate-200 rounded-lg p-6 flex flex-col justify-between min-h-[460px] shadow-2xs">
-          <div>
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3 mb-5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">
-                {activeSection === 'objective' ? 'Objective Task' : 'Theory Assignment'} {currentIndex + 1} of {currentQuestionsList.length}
-              </span>
+      {/* CORE PRESENTATION WORKSPACE VIEWPORT */}
+      {currentQuestionsList.length === 0 ? (
+        <div className="flex-1 max-w-7xl w-full mx-auto p-6 text-center text-xs font-mono uppercase text-[#9A87A9] font-bold flex flex-col justify-center items-center">
+          No active questions are loaded in this assessment section.
+        </div>
+      ) : (
+        <main className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-6 grid grid-cols-1 md:grid-cols-4 gap-6 my-auto items-stretch overflow-hidden">
+          
+          <section className="md:col-span-3 bg-white border border-[#9A87A9]/30 rounded-xl p-6 flex flex-col justify-between min-h-[440px] shadow-3xs">
+            <div>
+              <div className="flex justify-between items-center border-b border-[#FAF9FA] pb-3 mb-5">
+                <span className="text-[10px] font-black uppercase tracking-wider text-[#9A87A9] font-mono">
+                  {activeSection === 'objective' ? 'Multiple Choice' : 'Written Theory Answer'} {currentIndex + 1} of {currentQuestionsList.length}
+                </span>
+              </div>
+
+              {currentQuestion?.imageUrl && (
+                <div className="mb-5 border border-[#9A87A9]/20 bg-[#FAF9FA] p-1.5 max-w-xs rounded-lg overflow-hidden shadow-3xs">
+                  <img src={currentQuestion.imageUrl.startsWith('http') ? currentQuestion.imageUrl : `http://startrite_cbt_api.test${currentQuestion.imageUrl}`} alt="Reference attachment" className="w-full h-auto object-cover rounded" />
+                </div>
+              )}
+
+              <h3 className="text-sm font-bold text-slate-950 leading-relaxed mb-6 whitespace-pre-wrap">
+                {currentQuestion?.text}
+              </h3>
+
+              {activeSection === 'objective' ? (
+                <div className="space-y-2.5">
+                  {currentQuestion?.options.map((option, idx) => {
+                    const isSelected = answers[currentQuestion.id] === idx;
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => handleSelectObjectiveOption(idx)}
+                        className={`w-full text-left px-4 py-3 border text-xs font-bold rounded-lg transition-all flex items-center justify-between cursor-pointer ${
+                          isSelected ? 'border-[#2A1A63] bg-[#FAF9FA] text-[#2A1A63] ring-1 ring-[#2A1A63] shadow-3xs' : 'border-[#9A87A9]/30 bg-white text-slate-700 hover:border-[#9A87A9]/60'
+                        }`}
+                      >
+                        <span>{option}</span>
+                        <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${isSelected ? 'border-[#2A1A63] bg-[#2A1A63]' : 'border-[#9A87A9]/50'}`}>
+                          {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <textarea
+                  rows={7}
+                  value={answers[currentQuestion.id] || ''}
+                  onChange={(e) => handleTypeTheoryResponse(e.target.value)}
+                  placeholder="Type your structured written answer script response neatly here..."
+                  className="w-full p-4 bg-[#FAF9FA] border border-[#9A87A9]/30 rounded-xl text-xs font-bold text-slate-950 placeholder-[#9A87A9]/70 focus:outline-none focus:border-[#2A1A63] focus:bg-white transition-all resize-none leading-relaxed shadow-3xs"
+                />
+              )}
             </div>
 
-            {currentQuestion.imageUrl && (
-              <div className="mb-5 border border-slate-200 bg-slate-50 p-2 max-w-xs rounded overflow-hidden shadow-3xs">
-                <img src={currentQuestion.imageUrl} alt="Exam reference diagram" className="w-full h-auto object-cover rounded-xs" />
-              </div>
-            )}
+            <div className="flex justify-between items-center pt-5 mt-6 border-t border-[#FAF9FA]">
+              <button disabled={currentIndex === 0} onClick={handlePrevQuestion} className="px-4 py-2 border border-[#9A87A9]/30 rounded-lg text-[10px] font-black uppercase tracking-wider text-slate-600 hover:bg-slate-50 disabled:opacity-30 flex items-center gap-1 cursor-pointer">Back</button>
+              <button disabled={currentIndex === currentQuestionsList.length - 1} onClick={handleNextQuestion} className="px-4 py-2 border border-[#9A87A9]/30 rounded-lg text-[10px] font-black uppercase tracking-wider text-slate-600 hover:bg-slate-50 disabled:opacity-30 flex items-center gap-1 cursor-pointer">Next Question</button>
+            </div>
+          </section>
 
-            <h3 className="text-sm font-medium text-slate-900 leading-relaxed mb-6">
-              {currentQuestion.text}
-            </h3>
-
-            {activeSection === 'objective' ? (
-              <div className="space-y-2.5">
-                {currentQuestion.options.map((option, idx) => {
-                  const isSelected = answers[currentQuestion.id] === idx;
+          {/* RIGHT ROADMAP NAV GRID */}
+          <section className="bg-white border border-[#9A87A9]/30 rounded-xl p-5 flex flex-col justify-between shadow-3xs overflow-hidden">
+            <div className="overflow-y-auto">
+              <h4 className="text-[10px] font-black text-[#9A87A9] uppercase tracking-wider font-mono mb-3">Questions Board</h4>
+              <div className="grid grid-cols-4 gap-2">
+                {currentQuestionsList.map((q, idx) => {
+                  const active = idx === currentIndex;
+                  const answered = answers[q.id] !== undefined && answers[q.id] !== '';
                   return (
-                    <button
-                      key={idx}
-                      onClick={() => handleSelectObjectiveOption(idx)}
-                      className={`w-full text-left px-4 py-3 border text-xs font-medium rounded transition-all flex items-center justify-between cursor-pointer ${
-                        isSelected ? 'border-slate-900 bg-slate-50/80 text-slate-900 ring-1 ring-slate-900 font-bold' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                    <button 
+                      key={q.id} 
+                      onClick={() => setActiveIndices({ ...activeIndices, [activeSection]: idx })} 
+                      className={`h-9 text-xs font-black font-mono border transition-all rounded-lg flex items-center justify-center relative cursor-pointer ${
+                        active ? 'border-[#2A1A63] bg-[#2A1A63] text-white shadow-md' : 
+                        answered ? 'border-[#9A87A9]/60 bg-[#FAF9FA] text-[#2A1A63]' : 'border-[#9A87A9]/30 bg-white text-[#9A87A9] hover:border-[#9A87A9]/60'
                       }`}
                     >
-                      <span>{option}</span>
-                      <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${isSelected ? 'border-slate-900 bg-slate-900' : 'border-slate-300'}`}>
-                        {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                      </div>
+                      {idx + 1}
+                      {answered && !active && <div className="absolute top-1 right-1 w-1.5 h-1.5 bg-[#2A1A63] rounded-full" />}
                     </button>
                   );
                 })}
               </div>
-            ) : (
-              <textarea
-                rows={6}
-                value={answers[currentQuestion.id] || ''}
-                onChange={(e) => handleTypeTheoryResponse(e.target.value)}
-                placeholder="Type your comprehensive written theory script lines response here..."
-                className="w-full p-4 bg-slate-50 border border-slate-200 rounded text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:bg-white transition-all resize-none leading-relaxed"
-              />
-            )}
-          </div>
-
-          <div className="flex justify-between items-center pt-5 mt-6 border-t border-slate-100">
-            <button 
-              disabled={currentIndex === 0} 
-              onClick={handlePrevQuestion} 
-              className="px-4 py-2 border border-slate-200 rounded text-[10px] font-bold uppercase tracking-wider text-slate-600 hover:bg-slate-50 disabled:opacity-40 transition-all flex items-center gap-1 cursor-pointer"
-            >
-              <ChevronLeft className="w-3.5 h-3.5" /> Prev
-            </button>
-            <button 
-              disabled={currentIndex === currentQuestionsList.length - 1} 
-              onClick={handleNextQuestion} 
-              className="px-4 py-2 border border-slate-200 rounded text-[10px] font-bold uppercase tracking-wider text-slate-600 hover:bg-slate-50 disabled:opacity-40 transition-all flex items-center gap-1 cursor-pointer"
-            >
-              Next <ChevronRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </section>
-
-        {/* Right Navigation Roadmaps panel */}
-        <section className="bg-white border border-slate-200 rounded-lg p-5 flex flex-col justify-between shadow-2xs">
-          <div>
-            <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono mb-3">{activeSection === 'objective' ? 'Section A Roadmap' : 'Section B Roadmap'}</h4>
-            <div className="grid grid-cols-5 gap-2">
-              {currentQuestionsList.map((q, idx) => {
-                const active = idx === currentIndex;
-                const answered = answers[q.id] !== undefined && answers[q.id] !== '';
-                return (
-                  <button 
-                    key={q.id} 
-                    onClick={() => setActiveIndices({ ...activeIndices, [activeSection]: idx })} 
-                    className={`h-9 text-xs font-bold font-mono border transition-all rounded flex items-center justify-center relative cursor-pointer ${
-                      active ? 'border-slate-900 bg-slate-900 text-white shadow-xs' : 
-                      answered ? 'border-slate-300 bg-slate-100 text-slate-800' : 'border-slate-200 bg-white text-slate-400'
-                    }`}
-                  >
-                    {idx + 1}
-                    {answered && !active && <div className="absolute top-0.5 right-0.5 w-1 h-1 bg-slate-400 rounded-full" />}
-                  </button>
-                );
-              })}
             </div>
-          </div>
-          <div className="pt-4 border-t border-slate-100 mt-6">
-            <button onClick={() => setShowSubmitModal(true)} className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs uppercase tracking-wider transition-all rounded-sm shadow-2xs cursor-pointer text-center">Submit Full Paper</button>
-          </div>
-        </section>
-      </main>
+            
+            <div className="pt-4 border-t border-[#FAF9FA] mt-6 shrink-0">
+              <button onClick={() => setShowSubmitModal(true)} className="w-full py-3 bg-[#C62927] hover:opacity-90 text-white font-black text-xs uppercase tracking-wider transition-all rounded-lg shadow-md cursor-pointer text-center active:scale-[0.98]">
+                Submit Assessment Paper
+              </button>
+            </div>
+          </section>
+        </main>
+      )}
 
-      <footer className="w-full border-t border-slate-200/60 bg-white py-2 text-center text-[9px] font-bold text-slate-400 tracking-wider font-mono uppercase">Intranet Client Sync Buffer Engine: Active</footer>
-
+      {/* CONFIRMATION IN-VIEW MODAL OVERLAYS */}
       {showSubmitModal && (
-        <div className="fixed inset-0 bg-slate-900/30 z-[10000] flex items-center justify-center p-4 backdrop-blur-xs">
-          <div className="w-full max-w-sm bg-white border border-slate-200 p-6 rounded-lg shadow-xl space-y-4">
-            <div className="flex items-center gap-3 border-b border-slate-100 pb-3"><AlertCircle className="w-4 h-4 text-slate-400" /><h5 className="text-xs font-bold text-slate-900 uppercase tracking-wide">Submit Verification</h5></div>
-            <p className="text-xs text-slate-500 font-medium leading-relaxed">Are you completely finished with both sections? Submitting closes your active terminal worksheet data bundle on the school intranet node.</p>
-            <div className="flex justify-end gap-3 pt-2">
-              <button onClick={() => setShowSubmitModal(false)} className="px-4 py-2 border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-bold uppercase rounded cursor-pointer">Review Paper</button>
-              <button onClick={() => { setShowSubmitModal(false); document.exitFullscreen().catch(() => {}); onExamSubmit(); }} className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold uppercase tracking-wider rounded cursor-pointer shadow-2xs">Confirm Submit</button>
+        <div className="fixed inset-0 bg-slate-950/40 z-[25000] flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-white border border-[#9A87A9]/30 p-6 rounded-xl shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 border-b border-[#FAF9FA] pb-3">
+              <CheckCircle className="w-4 h-4 text-[#2A1A63]" />
+              <h5 className="text-xs font-black text-slate-950 uppercase tracking-wide">Finish Examination</h5>
+            </div>
+            <p className="text-xs text-slate-500 font-medium leading-relaxed">
+              Are you sure you want to finish this test? Clicking submit logs your responses securely to the school grading servers and seals your work.
+            </p>
+            <div className="flex justify-end gap-3 pt-2 font-sans">
+              <button onClick={() => setShowSubmitModal(false)} className="px-4 py-2 border border-[#9A87A9]/30 text-slate-600 hover:bg-slate-50 text-xs font-bold uppercase rounded-lg cursor-pointer">Review Work</button>
+              <button onClick={() => { localStorage.removeItem(localStorageKey); localStorage.removeItem(timerStorageKey); setShowSubmitModal(false); setShowSuccessModal(true); }} className="px-4 py-2 bg-[#2A1A63] text-white text-xs font-bold uppercase rounded-lg shadow-md cursor-pointer">Yes, Submit Paper</button>
             </div>
           </div>
         </div>
       )}
+
+      {showSuccessModal && (
+        <div className="fixed inset-0 bg-slate-950/70 z-[30000] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm bg-white border border-[#9A87A9]/40 p-6 rounded-xl shadow-2xl space-y-5 text-center select-none">
+            <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto border border-emerald-100">
+              <Award className="w-6 h-6 text-[#2A1A63]" />
+            </div>
+            <div>
+              <h4 className="text-xs font-black text-slate-950 uppercase tracking-tight">Paper Submitted Successfully</h4>
+              <p className="text-[10px] text-emerald-600 font-bold font-mono uppercase mt-1">Status: Sealed & Secured</p>
+              <p className="text-xs text-slate-500 font-medium leading-relaxed mt-3">
+                Your answers have been safely delivered to your teacher's folder. You can now close your desk browser safely. Well done!
+              </p>
+            </div>
+            <button onClick={() => { setShowSuccessModal(false); onExamSubmit(); }} className="w-full py-2.5 bg-[#2A1A63] text-white text-xs font-black uppercase tracking-wider rounded-lg shadow-md cursor-pointer">
+              Exit Secure Testing Window
+            </button>
+          </div>
+        </div>
+      )}
+
+      <footer className="w-full border-t border-[#9A87A9]/20 bg-white py-2.5 text-center text-[9px] font-black text-[#9A87A9] tracking-wider font-mono uppercase shrink-0">
+        Start-Rite Intranet Testing Services Engine Layer
+      </footer>
 
     </div>
   );

@@ -24,3 +24,27 @@
 input, button {
   border-radius: 4px !important;
 }
+
+
+@theme {
+  --color-brand-primary: #0f172a; /* Slate 950 baseline banner */
+  
+  /* Startrite Corporate Institutional Colors */
+  --brand-navy: #0f172a;
+  --brand-navy-light: #1e293b;
+  
+  --brand-primary: #12192c; /* Deep Startrite Midnight */
+  --brand-accent: #c2410c; /* Accent Highlight */
+  --brand-secure: #059669; /* Emerald Clean Room State */
+  --brand-alert: #e11d48;   /* Rose Irregularities Strike */
+  
+  --bg-surface: #fafafa;
+  --bg-card: #ffffff;
+  --border-slate-line: #e2e8f0;
+}
+
+/* Fallback theme configuration layout parameters */
+:root {
+  --brand-primary: #0f172a;
+  --brand-accent: #c2410c;
+} 

@@ -1,56 +1,68 @@
 import { useEffect, useState } from 'react';
-import { getAllUnsyncedAnswers, clearSyncedAnswers } from '../core/offlineDb';
+import { apiRequest } from './api';
+import { getAllUnsyncedAnswers, clearSyncedAnswers } from './offlineDb'; 
 
-export function useOfflineSync(assessmentId, studentId, syncIntervalMs = 30000) {
-  const [syncStatus, setSyncStatus] = useState('Synced'); // 'Synced' | 'Syncing...' | 'Offline_Saving_Local'
+export function useOfflineSync(assessmentId, studentId, intervalMs = 15000) {
+  const [syncStatus, setSyncStatus] = useState('Synced');
 
   useEffect(() => {
-    const executeBatchSync = async () => {
-      // Pull whatever answers are currently saved on this computer's hard drive
-      const unsyncedRecords = await getAllUnsyncedAnswers();
-      
-      // If nothing has changed, keep status clean and stop
-      if (unsyncedRecords.length === 0) {
+    if (!assessmentId) return;
+
+    const performLanBackgroundSync = async () => {
+      let unsyncedPackets = [];
+      try {
+        unsyncedPackets = await getAllUnsyncedAnswers();
+      } catch (err) {
+        console.error("[OFFLINE ENGINE] Failed reading IndexedDB rows:", err);
+        return;
+      }
+
+      if (unsyncedPackets.length === 0) {
         setSyncStatus('Synced');
         return;
       }
 
       setSyncStatus('Syncing...');
+      
+      for (const packet of unsyncedPackets) {
+        try {
+          // Pull live strikes from localStorage context to ensure syncing threads remain perfectly accurate
+          const persistedStrikes = parseInt(localStorage.getItem(`exam_strikes_${assessmentId}_${studentId}`), 10) || 0;
 
-      // 📦 COMPILE THE BATCH PAYLOAD FOR THE LARAVEL CONTROLLER
-      const batchPayload = {
-        student_id: studentId,
-        assessment_id: assessmentId,
-        sync_packet: unsyncedRecords
-      };
+          const response = await apiRequest(`api/v1/student/assessments/${assessmentId}/sync-telemetry`, {
+            method: 'POST',
+            body: JSON.stringify({
+              question_id: packet.question_id,
+              answered_index: packet.answered_index,
+              theory_response: packet.theory_response,
+              security_strikes: persistedStrikes, 
+              current_seconds_remaining: packet.current_seconds_remaining || null,
+              objective_progress_string: packet.objective_progress_string || null,
+              theory_progress_string: packet.theory_progress_string || null
+            })
+          });
 
-      try {
-        // Dispatches the entire bundle in ONE single network request to minimize router load
-        const response = await fetch('http://192.168.1.100/api/v1/exam/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(batchPayload)
-        });
-
-        if (response.ok) {
-          // If Laravel says "Got it!", erase those specific answers from our local queue
-          const syncedIds = unsyncedRecords.map(r => r.question_id);
-          await clearSyncedAnswers(syncedIds);
-          setSyncStatus('Synced');
-        } else {
-          setSyncStatus('Offline_Saving_Local');
+          if (response.ok) {
+            await clearSyncedAnswers([packet.question_id]);
+            console.log(`[OFFLINE ENGINE] Question node ID ${packet.question_id} securely committed to master server.`);
+          } else {
+            console.warn(`[OFFLINE ENGINE] Server rejected data package: ${response.status}`);
+            setSyncStatus('Error Syncing');
+            return; 
+          }
+        } catch (error) {
+          console.error("[OFFLINE ENGINE] LAN Server unreachable. Retaining progress in IndexedDB.");
+          setSyncStatus('Offline Buffer');
+          return; 
         }
-      } catch (error) {
-        // If Wi-Fi fails or server dies, catch the error silently so the student's exam doesn't freeze
-        console.warn('[OFFLINE ENGINE] LAN Server unreachable. Retaining progress in IndexedDB.');
-        setSyncStatus('Offline_Saving_Local');
       }
+
+      setSyncStatus('Synced');
     };
 
-    // Run this process automatically on your timed loop interval
-    const syncTimer = setInterval(executeBatchSync, syncIntervalMs);
-    return () => clearInterval(syncTimer);
-  }, [assessmentId, studentId, syncIntervalMs]);
+    const syncWorkerDaemon = setInterval(performLanBackgroundSync, intervalMs);
+    return () => clearInterval(syncWorkerDaemon);
+  }, [assessmentId, studentId, intervalMs]);
 
   return syncStatus;
 }
