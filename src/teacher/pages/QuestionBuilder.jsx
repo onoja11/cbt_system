@@ -66,8 +66,7 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
   }, [resolvedStatus]);
 
   // Unified Server Domain Selection Guard
-  // const baseServerDomain = window.API_BASE_URL || (window.location.hostname.includes('localhost') || window.location.hostname.includes('vercel.app') ? 'http://startrite_cbt_api.test' : 'https://startrite-api.onrender.com');
-
+  // const baseServerDomain = window.API_BASE_URL || (window.location.hostname.includes('localhost') || window.location.hostname.includes('vercel.app') ? 'https://startrite-api.onrender.com' : 'http://startrite_cbt_api.test');
   const baseServerDomain = window.API_BASE_URL || 'https://startrite-api.onrender.com';
 
   // ⚡ FIXED: Moved targetAssessmentId calculation ABOVE the hooks that depend on it!
@@ -104,7 +103,6 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
         const targetModelStatus = data.assessment_status || data.status_label || data.assessment?.status || 'draft';
         setAssessmentStatus(targetModelStatus);
         
-        // 💡 ADDED: Capture moderator feedback values out of the response payload array map records
         const feedback = data.feedback_comment || data.feedback || data.assessment?.feedback_comment || '';
         setFeedbackComment(feedback);
         
@@ -203,10 +201,11 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
     triggerNotificationAlert("Bulk spreadsheet workspace cleared successfully.");
   };
 
+  // ⚙️ STATE REGULATION: Emits premium success announcements safely
   const triggerNotificationAlert = (msg) => {
     setSuccessMessage(msg);
     setShowSuccessNotification(true);
-    setTimeout(() => setShowSuccessNotification(false), 3500);
+    setTimeout(() => setShowSuccessNotification(false), 4000);
   };
 
   const handleBulkCSVExecution = async () => {
@@ -221,12 +220,11 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
     });
 
     try {
-      // 🎯 FIXED: Direct native request pipeline with automated header allocation to bypass any core apiRequest JSON mutation breaks locally!
-      const authToken = localStorage.getItem('intranet_access_token');
+      const token = localStorage.getItem('intranet_access_token');
       const response = await fetch(`${baseServerDomain}/api/v1/teacher/assessments/${targetAssessmentId}/questions/bulk`, {
         method: 'POST',
         headers: {
-          'Authorization': authToken ? `Bearer ${authToken}` : '',
+          'Authorization': token ? `Bearer ${token}` : '',
           'Accept': 'application/json'
         },
         body: formData
@@ -240,7 +238,8 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
         setCsvPreviewQuestions([]);
         setIngestionMode('manual');
         await refreshQuestionBlueprint();
-        triggerNotificationAlert(data.message || "Bulk spreadsheets dataset synchronized successfully!");
+        // 🎯 STATE REGULATION: Inject precise backend response metrics banner down to the notification toaster loop
+        triggerNotificationAlert(data.message || `Successfully processed bulk data rows into active staging!`);
       } else {
         setErrorModal({
           isOpen: true,
@@ -250,7 +249,11 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
       }
     } catch (error) {
       console.error(error);
-      triggerNotificationAlert("Transaction execution drop. Check network connectivity thresholds.");
+      setErrorModal({
+        isOpen: true,
+        title: 'Network Communication Error',
+        message: 'The connection dropped during sheet compilation. Check column alignments.'
+      });
     } finally {
       setIsUploadingBulk(false);
     }
@@ -439,7 +442,7 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
   return (
     <div className="min-h-screen bg-[#FAF9FA] flex flex-col justify-between text-[#2A1A63] font-sans selection:bg-[#9A87A9]/30 w-full overflow-x-hidden relative">
       
-      {/* 🎯 STATE OVERLAY LOADING ANIMATION */}
+      {/* 🎯 STATE REGULATION: HIGH QUALITY INTERACTIVE BULK LOADING OVERLAY COVERS */}
       {isUploadingBulk && (
         <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs z-[50000] flex flex-col justify-center items-center text-center font-mono">
           <div className="bg-white border border-[#9A87A9]/40 p-6 rounded-2xl max-w-sm w-full shadow-2xl space-y-4">
