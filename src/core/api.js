@@ -1,4 +1,6 @@
+// const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://startrite_cbt_api.test';
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://startrite-api.onrender.com';
+
 
 export const apiRequest = async (endpoint, options = {}) => {
   const token = localStorage.getItem('intranet_access_token');
