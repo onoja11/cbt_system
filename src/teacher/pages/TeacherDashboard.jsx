@@ -16,7 +16,7 @@ import {
   AlertTriangle, 
   Play, 
   Layers,
-  Loader2 // 💡 FIXED: Added missing Loader2 token register here
+  Loader2 
 } from 'lucide-react';
 import ConfirmationModal from '../../shared/ConfirmationModal';
 import { apiRequest } from '../../core/api';
@@ -122,7 +122,7 @@ export default function TeacherDashboard({
     };
 
     synchronizeActiveFolderContent();
-  }, [activeCourseFolder]);
+  }, [activeCourseFolder, assessmentsRegistry.length]);
 
   // ─────────────────────────────────────────────────────────────────
   // ACTION HANDLER: Sync Assessment Slots on Subject Card Click
@@ -229,14 +229,14 @@ export default function TeacherDashboard({
             <div className="mr-1 shrink-0">
               <Logo size={45} showText={false} />
             </div>
-            <div>
+            <div className="text-left">
               <h2 className="text-xs font-black uppercase tracking-wider text-slate-950">Staff Dashboard Workspace</h2>
               <p className="text-[10px] font-bold text-[#9A87A9] mt-0.5 uppercase font-mono">Teacher: {teacher?.name || "Ochigbo Godswill"}</p>
             </div>
           </div>
           
           <div className="flex items-center gap-3">
-            <span className="text-[10px] font-mono font-black text-[#9A87A9] uppercase bg-[#FAF9FA] border border-[#9A87A9]/20 px-2.5 py-0.5 rounded-md hidden sm:inline-block">SCHOOL NETWORK ONLINE</span>
+            <span className="text-[10px] font-mono font-black text-[#9A87A9] uppercase bg-[#FAF9FA] border border-[#9A87A9]/20 px-2.5 py-0.5 rounded-md hidden sm:inline-block">SCHOOL Intranet ONLINE</span>
             <button 
               onClick={() => setShowLogoutDrawer(true)}
               className="flex items-center gap-1 px-3 py-1.5 border border-rose-200 bg-rose-50/60 text-[#C62927] hover:bg-[#C62927] hover:text-white rounded-lg text-[10px] font-black uppercase tracking-wider cursor-pointer transition-all active:scale-[0.95] shadow-3xs"
@@ -261,7 +261,7 @@ export default function TeacherDashboard({
 
       {/* VIEW LAYER 1: ROSTER CLASSES GRID CHANNELS */}
       {!activeCourseFolder ? (
-        <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 flex flex-col justify-start my-auto">
+        <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 my-auto flex flex-col justify-start">
           <div className="mb-6 text-left">
             <h3 className="text-sm font-black text-slate-950 uppercase tracking-tight">Your Allocated Classes</h3>
             <p className="text-xs text-[#9A87A9] font-medium mt-0.5">Select an individual subject path folder to manage continuous assessment questions or review score reports.</p>
@@ -390,12 +390,12 @@ export default function TeacherDashboard({
                 ) : (
                   openFolderSlots.map((asm, idx) => (
                     <div key={asm.id || idx} className="p-4 border border-[#9A87A9]/20 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between bg-white hover:border-[#9A87A9]/50 transition-all gap-3 shadow-3xs">
-                      <div className="space-y-1">
+                      <div className="space-y-1 text-left">
                         <div className="flex items-center gap-2">
-                          <span className="text-[9px] font-mono font-black x-track border px-1.5 py-0.5 rounded bg-[#FAF9FA] text-slate-700 uppercase tracking-wide">{asm.type}</span>
+                          <span className="text-[9px] font-mono font-black border px-1.5 py-0.5 rounded bg-[#FAF9FA] text-slate-700 uppercase tracking-wide">{asm.type}</span>
                           <h4 className="text-sm font-black text-slate-950 uppercase tracking-tight">{activeCourseFolder.name} Test File</h4>
                         </div>
-                        <p className="text-[11px] font-medium text-[#9A87A9] uppercase tracking-wide">{activeCourseFolder.classGroup} • {asm.totalQuestions || 0} Stored Questions • Timer: <span className="font-mono font-bold text-slate-800 bg-[#FAF9FA] px-1 rounded">{asm.duration} Mins</span></p>
+                        <p className="text-[11px] font-medium text-[#9A87A9] uppercase tracking-wide">{activeCourseFolder.classGroup} • {asm.totalQuestions || 0} Stored Questions • Timer: <span className="font-mono font-bold text-slate-800 bg-[#FAF9FA] px-1 rounded">{asm.duration}</span></p>
                       </div>
 
                       <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end shrink-0">
@@ -405,6 +405,7 @@ export default function TeacherDashboard({
                           asm.status === 'Approved' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' :
                           asm.status === 'Finished (Ready to Grade)' ? 'bg-blue-50 border-blue-200 text-blue-700' :
                           asm.status === 'Graded' ? 'bg-emerald-600 border-emerald-600 text-white' :
+                          asm.status === 'Rejected' ? 'bg-rose-50 border-rose-200 text-[#C62927]' :
                           'bg-[#FAF9FA] border-[#9A87A9]/20 text-[#9A87A9]'
                         }`}>
                           {asm.status}
@@ -420,13 +421,21 @@ export default function TeacherDashboard({
                             </button>
                           )}
 
-                          {asm.status === 'Approved' && (
+                          {/* 🎯 FIXED: Stripped the fallback override logic. The 'Launch Live' option is strictly locked behind admin allocation (is_teacher_delegated) */}
+                          {asm.is_teacher_delegated && asm.status !== 'Graded' && asm.status !== 'Exam in Progress' && asm.status !== 'Finished (Ready to Grade)' && (
                             <>
                               <button onClick={() => onNavigateToBuilder(asm.id)} className="px-2.5 py-1.5 border border-[#9A87A9]/30 text-slate-700 hover:border-slate-950 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center gap-1 cursor-pointer">Review Paper</button>
                               <button onClick={() => setModalConfig({ isOpen: true, type: 'start_exam_now', targetId: asm.id })} className="px-3 py-1.5 bg-[#2A1A63] text-white text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center gap-1.5 shadow-md cursor-pointer active:scale-[0.97] transition-all">
                                 <Play className="w-3.5 h-3.5 text-white fill-current" /> Launch Live
                               </button>
                             </>
+                          )}
+
+                          {/* 🎯 FIXED: If the paper is Approved but NOT delegated, the teacher can only review it in a read-only context */}
+                          {asm.status === 'Approved' && !asm.is_teacher_delegated && (
+                            <button onClick={() => onNavigateToBuilder(asm.id)} className="px-2.5 py-1.5 border border-[#9A87A9]/30 text-slate-700 hover:border-slate-950 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center gap-1 cursor-pointer">
+                              Review Paper
+                            </button>
                           )}
 
                           {asm.status === 'Finished (Ready to Grade)' && (
@@ -447,9 +456,11 @@ export default function TeacherDashboard({
                             </button>
                           )}
 
-                          {asm.status === 'Draft' && (
+                          {(asm.status === 'Draft' || asm.status === 'Rejected') && !asm.is_teacher_delegated && (
                             <>
-                              <button onClick={() => onNavigateToBuilder(asm.id)} className="px-2.5 py-1.5 border border-[#9A87A9]/30 text-slate-700 hover:border-slate-950 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center gap-1 cursor-pointer">Compile Quiz</button>
+                              <button onClick={() => onNavigateToBuilder(asm.id)} className="px-2.5 py-1.5 border border-[#9A87A9]/30 text-slate-700 hover:border-slate-950 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center gap-1 cursor-pointer">
+                                {asm.status === 'Rejected' ? 'Fix Layout' : 'Compile Quiz'}
+                              </button>
                               <button onClick={() => setModalConfig({ isOpen: true, type: 'send_review', targetId: asm.id })} className="px-2.5 py-1.5 bg-[#2A1A63] text-white text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center gap-1 cursor-pointer shadow-md">Submit Paper</button>
                             </>
                           )}
@@ -542,10 +553,6 @@ export default function TeacherDashboard({
         }
       />
 
-      <footer className="w-full border-t border-[#9A87A9]/20 bg-white py-2.5 text-center text-[9px] font-black text-[#9A87A9] tracking-wider font-mono uppercase shrink-0 px-4">
-        Start-Rite Schools Corporate Intranet School Management Cluster
-      </footer>
-
       {/* PRIVILEGE TERMINATION DRAWER MODAL OVERLAY */}
       <div className={`fixed inset-0 bg-slate-950/40 backdrop-blur-xs z-[10000] transition-all duration-300 flex flex-col justify-end ${showLogoutDrawer ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
         <div className={`w-full bg-white border-t-2 border-[#C62927] p-6 shadow-2xl transition-all duration-300 transform font-mono ${showLogoutDrawer ? 'translate-y-0' : 'translate-y-full'}`}>
@@ -576,6 +583,10 @@ export default function TeacherDashboard({
           </div>
         </div>
       </div>
+
+      <footer className="w-full border-t border-[#9A87A9]/20 bg-white py-2.5 text-center text-[9px] font-black text-[#9A87A9] tracking-wider font-mono uppercase shrink-0 px-4">
+        Start-Rite Schools Corporate Intranet School Management Cluster
+      </footer>
 
     </div>
   );

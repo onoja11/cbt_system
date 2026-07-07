@@ -28,7 +28,7 @@ export default function Login({ onAuthSuccess }) {
     closeAlert();
     
     if (!identifier.trim() || !password.trim()) {
-      triggerAlert("Please fill in both your User ID and password to log in.");
+      triggerAlert("Please enter your registered ID Number and password to log in.");
       return;
     }
 
@@ -49,7 +49,7 @@ export default function Login({ onAuthSuccess }) {
         localStorage.setItem('intranet_access_token', data.token);
         onAuthSuccess(data.token, data.domain_context, data.user);
       } else {
-        triggerAlert(data.message || "Invalid login details. Please check your spelling and try again.");
+        triggerAlert(data.message || "Invalid credentials profile. Please check your tracking number format and try again.");
       }
     } catch (error) {
       console.error("LAN_AUTHENTICATION_CRITICAL_FAILURE:", error);
@@ -62,7 +62,6 @@ export default function Login({ onAuthSuccess }) {
   return (
     <div className="min-h-screen bg-[#FAF9FA] flex flex-col justify-between p-6 select-none font-sans text-[#2A1A63] w-full overflow-x-hidden">
       
-      
       {/* Main Identity Verification Card Container */}
       <div className="w-full max-w-sm mx-auto my-auto bg-white border border-[#9A87A9]/30 p-8 rounded-xl shadow-xs shrink-0 flex flex-col items-center">
         
@@ -73,7 +72,8 @@ export default function Login({ onAuthSuccess }) {
 
         <div className="mb-6 text-center w-full">
           <h1 className="text-base font-black text-[#2A1A63] tracking-tight uppercase">Portal Login Verification</h1>
-          <p className="text-xs text-[#9A87A9] font-medium mt-1">Please enter your username and account password to open your dashboard or start an assessment.</p>
+          {/* 💡 UPDATED: Aligned text message rules with staff_no / admission_no metrics */}
+          <p className="text-xs text-[#9A87A9] font-medium mt-1">Please enter your institutional tracking code and account password to securely connect to your intranet node workspace.</p>
         </div>
 
         {/* INLINE CUSTOM STATE BANNER MESSAGES NOTIFIER */}
@@ -88,11 +88,11 @@ export default function Login({ onAuthSuccess }) {
             ) : (
               <AlertTriangle className="w-4 h-4 text-[#C62927] shrink-0 mt-0.5" />
             )}
-            <span className="pr-4">{notification.message}</span>
+            <span className="pr-4 text-left">{notification.message}</span>
             <button 
               type="button" 
               onClick={closeAlert} 
-              className="absolute top-2 right-2 text-slate-400 hover:text-slate-700 font-bold"
+              className="absolute top-2 right-2 text-slate-400 hover:text-slate-700 font-bold cursor-pointer"
             >
               ×
             </button>
@@ -101,14 +101,15 @@ export default function Login({ onAuthSuccess }) {
 
         <form onSubmit={handleSubmit} className="space-y-4 w-full text-left">
           <div>
-            <label className="block text-[10px] font-black text-[#2A1A63] uppercase tracking-wider mb-1.5 font-mono">Username / ID Code</label>
+            {/* 💡 UPDATED: Field label and placeholders customized to match distinct tracking configurations */}
+            <label className="block text-[10px] font-black text-[#2A1A63] uppercase tracking-wider mb-1.5 font-mono">Staff No / Admission No</label>
             <input
               type="text"
               required
               disabled={isSubmitting}
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
-              placeholder="e.g., STUDENT-001 or TEACHER-NAME"
+              placeholder="e.g., SRS/STF/TEA/... or SRS/STU/..."
               className="w-full px-3 py-2.5 bg-[#FAF9FA] border border-[#9A87A9]/40 text-sm font-bold text-[#2A1A63] uppercase font-mono rounded-lg focus:outline-none focus:border-[#2A1A63] focus:bg-white transition-all placeholder:normal-case shadow-3xs"
             />
           </div>
@@ -130,7 +131,7 @@ export default function Login({ onAuthSuccess }) {
             type="submit"
             disabled={isSubmitting}
             style={{ backgroundColor: '#2A1A63' }}
-            className={`w-full py-3 hover:opacity-90 text-white font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 mt-2 active:scale-[0.98] rounded-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-md`}
+            className="w-full py-3 hover:opacity-90 text-white font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 mt-2 active:scale-[0.98] rounded-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
           >
             {isSubmitting ? (
               <>

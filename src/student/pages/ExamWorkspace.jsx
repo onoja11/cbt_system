@@ -53,7 +53,11 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
           const dbQuestions = data.questions || [];
           setExamMeta(feedData.exam);
           
-          const objectives = dbQuestions.filter(q => q.type === 'Objective' || q.type === 'True/False').map((q, idx) => ({
+          // 🎯 FIXED: Normalizing types to lowercase to handle database string mismatch fields cleanly
+          const objectives = dbQuestions.filter(q => {
+            const cleanType = String(q.type || '').trim().toLowerCase();
+            return cleanType === 'objective' || cleanType === 'true/false';
+          }).map((q, idx) => ({
             id: q.id,
             number: idx + 1,
             text: q.question_text,
@@ -61,7 +65,10 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
             options: typeof q.options === 'string' ? JSON.parse(q.options) : (q.options || [])
           }));
 
-          const theories = dbQuestions.filter(q => q.type === 'Theory').map((q, idx) => ({
+          const theories = dbQuestions.filter(q => {
+            const cleanType = String(q.type || '').trim().toLowerCase();
+            return cleanType === 'theory';
+          }).map((q, idx) => ({
             id: q.id,
             number: idx + 1,
             text: q.question_text,
@@ -256,7 +263,7 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
           body: JSON.stringify({
             question_id: currentQ.id,
             answered_index: activeSection === 'objective' ? (answers[currentQ.id] ?? null) : null,
-            theory_response: activeSection === 'theory' ? (answers[currentQuestion.id] ?? null) : null,
+            theory_response: activeSection === 'theory' ? (answers[currentQ.id] ?? null) : null,
             security_strikes: nextCount, 
             current_seconds_remaining: nextCount >= 3 ? 0 : timeLeft,
             objective_progress_string: `${objCount} / ${questions.objective.length}`,
@@ -305,7 +312,7 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
     if (docEl.requestFullscreen) {
       docEl.requestFullscreen()
         .then(() => setViolationType(null))
-        .catch(() => alert("Could not restore fullscreen. Please tell your supervisor."));
+        .catch(() => alert("Could not restore fullscreen mode automatically. Please contact your supervisor."));
     }
   };
 
@@ -420,7 +427,7 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
                 This screen has been locked because the application rules were skipped multiple times (leaving fullscreen or attempting shortcuts). Please wait for an invigilator to inspect your station.
               </p>
             </div>
-            <button onClick={handleInstructorOverrideClearance} className="w-full py-3 bg-[#C62927] hover:opacity-90 text-white font-bold text-xs uppercase tracking-wider rounded-lg transition-all shadow-md">
+            <button onClick={handleInstructorOverrideClearance} className="w-full py-3 bg-[#C62927] hover:opacity-90 text-white font-bold text-xs uppercase tracking-wider rounded-lg shadow-md cursor-pointer">
               Enter Supervisor Key
             </button>
           </div>
@@ -430,20 +437,17 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
       {/* WARNING POPUP ALERTS */}
       {violationType && !isHardLocked && !showSuccessModal && (
         <div className="fixed inset-0 bg-slate-950/40 z-[9999] flex flex-col justify-center items-center text-center p-6 backdrop-blur-xs">
-          <div className="w-full max-w-sm bg-white border border-[#9A87A9]/30 rounded-xl p-6 shadow-2xl space-y-4">
-            <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto border border-amber-100">
-              <ShieldAlert className="w-6 h-6 text-[#C62927]" />
-            </div>
-            <div>
+          <div className="w-full max-w-sm bg-white border border-[#9A87A9]/30 p-6 rounded-xl shadow-2xl space-y-4 text-left">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-[#C62927] shrink-0 mt-0.5" />
               <h3 className="text-sm font-black uppercase text-slate-950">Security Rule Notice</h3>
-              <p className="text-[11px] text-[#C62927] font-black font-mono uppercase mt-0.5">Warning Strike: {strikeCounter} / 3</p>
-              <p className="text-xs text-slate-500 font-medium leading-relaxed mt-3">
-                {violationType === 'copy' && "Copying text is completely locked on this examination panel."}
-                {violationType === 'paste' && "Pasting external content inside answers is disabled."}
-                {violationType === 'fullscreen' && "Exiting your test screen layout triggers a warning strike code."}
-              </p>
             </div>
-            <button onClick={handleRequestRestoreFullscreen} className="w-full py-2.5 bg-[#2A1A63] text-white font-bold text-xs uppercase tracking-wider rounded-lg shadow-sm">
+            <p className="text-xs text-slate-500 font-medium leading-relaxed">
+              {violationType === 'copy' && "Copying text is completely locked on this examination panel."}
+              {violationType === 'paste' && "Pasting external content inside answers is disabled."}
+              {violationType === 'fullscreen' && "Exiting your test screen layout triggers a warning strike code."}
+            </p>
+            <button onClick={handleRequestRestoreFullscreen} className="w-full py-2 bg-[#2A1A63] text-white text-xs font-bold uppercase tracking-wider rounded-lg shadow-md cursor-pointer">
               Return to Test Mode
             </button>
           </div>
@@ -451,32 +455,29 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
       )}
 
       {/* HEADER COHORT BAR */}
-      <header className="w-full bg-white border-b border-[#9A87A9]/30 px-6 py-3 sticky top-0 z-40 shadow-3xs">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
+      <header className="w-full bg-white border-b border-[#9A87A9]/30 px-4 md:px-6 py-4 sticky top-0 z-40 shadow-3xs">
+        <div className="max-w-7xl mx-auto flex justify-between items-center w-full">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-[#2A1A63] text-white font-black text-xs flex items-center justify-center rounded-lg shadow-sm uppercase">
               {student?.initials || student?.name?.substring(0,2) || 'EX'}
             </div>
-            <div>
-              <h2 className="text-xs font-black text-slate-950 uppercase tracking-tight">{student?.name}</h2>
-              <p className="text-[10px] font-bold text-[#9A87A9] mt-0.5 uppercase tracking-wider font-mono">{student?.details?.class_group || 'Start-Rite Student'}</p>
+            <div className="text-left">
+              <h2 className="text-xs font-black uppercase tracking-wider text-slate-950">{examMeta?.subject || "Examination Paper"}</h2>
+              <p className="text-[10px] font-bold text-[#9A87A9] mt-0.5 uppercase font-mono">{student?.name || "Candidate Row"}</p>
             </div>
           </div>
 
           <div className="flex items-center gap-4">
-            <div className={`px-2.5 py-1.5 text-[9px] font-mono font-bold uppercase tracking-wider rounded border flex items-center gap-1.5 ${
-              syncStatus === 'Synced' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-blue-50 text-blue-700 border-blue-200 animate-pulse'
+            <div className={`px-2.5 py-1.5 border rounded border-[#9A87A9]/20 text-[9px] font-mono font-black uppercase tracking-wider ${
+              syncStatus ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100 animate-pulse'
             }`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${syncStatus === 'Synced' ? 'bg-emerald-600' : 'bg-blue-600'}`} />
-              Saved Copy: {syncStatus === 'Synced' ? 'Securely Updated' : 'Saving...'}
+              {syncStatus ? '✓ Channels Synced' : '⚠ Buffer Staging'}
             </div>
 
-            <div className={`flex items-center gap-2 px-3 py-1.5 border rounded-lg text-sm font-bold shadow-3xs font-mono ${
-              isClockFlashing 
-                ? 'bg-emerald-50 border-emerald-400 text-emerald-600 ring-2 ring-emerald-400 scale-105' 
-                : timeLeft < 300 ? 'bg-rose-50 border-rose-300 text-[#C62927] animate-pulse' : 'bg-[#FAF9FA] border-[#9A87A9]/40 text-slate-950'
+            <div className={`flex items-center gap-2 px-3 py-1.5 border rounded-lg text-sm font-bold shadow-3xs font-mono text-left ${
+              timeLeft < 300 ? 'text-[#C62927] bg-rose-50 border-rose-100 animate-pulse font-black' : 'text-[#2A1A63] bg-[#FAF9FA]'
             }`}>
-              <Clock className={`w-4 h-4 ${isClockFlashing ? 'text-emerald-600' : timeLeft < 300 ? 'text-[#C62927]' : 'text-[#9A87A9]'}`} />
+              <Clock className="w-4 h-4 shrink-0" />
               <span>{formatTime(timeLeft)}</span>
             </div>
           </div>
@@ -486,54 +487,55 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
       {/* SECTION SELECTORS */}
       <div className="w-full max-w-7xl mx-auto px-4 py-2 mt-4 flex gap-2 shrink-0">
         {questions.objective.length > 0 && (
-          <button onClick={() => setActiveSection('objective')} className={`px-4 py-2 text-xs font-black uppercase tracking-wider rounded-lg border cursor-pointer transition-all ${activeSection === 'objective' ? 'bg-[#2A1A63] border-[#2A1A63] text-white shadow-sm' : 'bg-white text-[#9A87A9] hover:bg-slate-50 border-[#9A87A9]/30'}`}>Section A: Objectives</button>
+          <button onClick={() => setActiveSection('objective')} className={`px-4 py-2 text-xs font-black uppercase rounded-lg tracking-wider cursor-pointer font-mono transition-all duration-150 ${activeSection === 'objective' ? 'bg-[#2A1A63] text-white shadow-sm border-[#2A1A63]' : 'bg-white border border-[#9A87A9]/30 text-[#9A87A9] hover:bg-slate-50'}`}>Section A: Objectives</button>
         )}
         {questions.theory.length > 0 && (
-          <button onClick={() => setActiveSection('theory')} className={`px-4 py-2 text-xs font-black uppercase tracking-wider rounded-lg border cursor-pointer transition-all ${activeSection === 'theory' ? 'bg-[#2A1A63] border-[#2A1A63] text-white shadow-sm' : 'bg-white text-[#9A87A9] hover:bg-slate-50 border-[#9A87A9]/30'}`}>Section B: Theory</button>
+          <button onClick={() => setActiveSection('theory')} className={`px-4 py-2 text-xs font-black uppercase rounded-lg tracking-wider cursor-pointer font-mono transition-all duration-150 ${activeSection === 'theory' ? 'bg-[#2A1A63] text-white shadow-sm border-[#2A1A63]' : 'bg-white border border-[#9A87A9]/30 text-[#9A87A9] hover:bg-slate-50'}`}>Section B: Theory</button>
         )}
       </div>
 
       {/* CORE PRESENTATION WORKSPACE VIEWPORT */}
       {currentQuestionsList.length === 0 ? (
-        <div className="flex-1 max-w-7xl w-full mx-auto p-6 text-center text-xs font-mono uppercase text-[#9A87A9] font-bold flex flex-col justify-center items-center">
-          No active questions are loaded in this assessment section.
+        <div className="flex-1 max-w-7xl w-full mx-auto p-6 text-center text-xs font-mono text-[#9A87A9] font-bold uppercase bg-white border border-dashed border-[#9A87A9]/30 rounded-xl py-24 flex items-center justify-center">
+          No active question matrix rows found in this section boundary partition.
         </div>
       ) : (
         <main className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-6 grid grid-cols-1 md:grid-cols-4 gap-6 my-auto items-stretch overflow-hidden">
           
-          <section className="md:col-span-3 bg-white border border-[#9A87A9]/30 rounded-xl p-6 flex flex-col justify-between min-h-[440px] shadow-3xs">
+          <section className="md:col-span-3 bg-white border border-[#9A87A9]/30 rounded-xl p-6 flex flex-col justify-between min-h-[440px] shadow-3xs text-left">
             <div>
-              <div className="flex justify-between items-center border-b border-[#FAF9FA] pb-3 mb-5">
-                <span className="text-[10px] font-black uppercase tracking-wider text-[#9A87A9] font-mono">
-                  {activeSection === 'objective' ? 'Multiple Choice' : 'Written Theory Answer'} {currentIndex + 1} of {currentQuestionsList.length}
-                </span>
+              <div className="flex justify-between items-center border-b border-[#FAF9FA] pb-3 mb-5 font-mono text-[10px] font-black text-[#9A87A9] uppercase">
+                <span>{activeSection === 'objective' ? 'Multiple Choice' : 'Written Theory Essay'} Slot {currentIndex + 1}</span>
+                <span className="bg-[#FAF9FA] border px-2 py-0.5 rounded text-slate-950 font-black">Weight: 2 Marks</span>
               </div>
 
               {currentQuestion?.imageUrl && (
-                <div className="mb-5 border border-[#9A87A9]/20 bg-[#FAF9FA] p-1.5 max-w-xs rounded-lg overflow-hidden shadow-3xs">
-                  <img src={currentQuestion.imageUrl.startsWith('http') ? currentQuestion.imageUrl : `http://startrite_cbt_api.test${currentQuestion.imageUrl}`} alt="Reference attachment" className="w-full h-auto object-cover rounded" />
+                <div className="mb-5 border border-[#9A87A9]/20 rounded-xl overflow-hidden bg-[#FAF9FA] max-w-sm h-48 flex items-center justify-center shadow-3xs">
+                  <img src={currentQuestion.imageUrl} alt="Reference Attachment" className="w-full h-full object-contain p-2" />
                 </div>
               )}
 
-              <h3 className="text-sm font-bold text-slate-950 leading-relaxed mb-6 whitespace-pre-wrap">
+              <h3 className="text-sm font-bold text-slate-950 leading-relaxed mb-6 font-sans">
                 {currentQuestion?.text}
               </h3>
 
               {activeSection === 'objective' ? (
-                <div className="space-y-2.5">
+                <div className="space-y-2.5 w-full">
                   {currentQuestion?.options.map((option, idx) => {
                     const isSelected = answers[currentQuestion.id] === idx;
                     return (
                       <button
                         key={idx}
                         onClick={() => handleSelectObjectiveOption(idx)}
-                        className={`w-full text-left px-4 py-3 border text-xs font-bold rounded-lg transition-all flex items-center justify-between cursor-pointer ${
-                          isSelected ? 'border-[#2A1A63] bg-[#FAF9FA] text-[#2A1A63] ring-1 ring-[#2A1A63] shadow-3xs' : 'border-[#9A87A9]/30 bg-white text-slate-700 hover:border-[#9A87A9]/60'
+                        className={`w-full px-4 py-3 border rounded-xl text-xs font-bold font-sans transition-all flex items-center justify-between text-left cursor-pointer ${
+                          isSelected 
+                            ? 'bg-[#2A1A63] text-white border-[#2A1A63] shadow-md scale-[1.005]' 
+                            : 'bg-[#FAF9FA] border-[#9A87A9]/20 text-slate-800 hover:border-[#9A87A9]/50'
                         }`}
                       >
-                        <span>{option}</span>
-                        <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${isSelected ? 'border-[#2A1A63] bg-[#2A1A63]' : 'border-[#9A87A9]/50'}`}>
-                          {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                        <span>{String.fromCharCode(65 + idx)}) {option}</span>
+                        <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${isSelected ? 'border-white bg-white/20' : 'border-[#9A87A9]/40'}`}>
+                          {isSelected && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
                         </div>
                       </button>
                     );
@@ -545,22 +547,34 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
                   value={answers[currentQuestion.id] || ''}
                   onChange={(e) => handleTypeTheoryResponse(e.target.value)}
                   placeholder="Type your structured written answer script response neatly here..."
-                  className="w-full p-4 bg-[#FAF9FA] border border-[#9A87A9]/30 rounded-xl text-xs font-bold text-slate-950 placeholder-[#9A87A9]/70 focus:outline-none focus:border-[#2A1A63] focus:bg-white transition-all resize-none leading-relaxed shadow-3xs"
+                  className="w-full px-4 py-3 bg-[#FAF9FA] border border-[#9A87A9]/40 text-sm font-bold font-sans text-slate-950 rounded-xl focus:outline-none focus:border-[#2A1A63] focus:bg-white transition-all shadow-inner placeholder:font-mono placeholder:text-slate-400 placeholder:text-xs"
                 />
               )}
             </div>
 
-            <div className="flex justify-between items-center pt-5 mt-6 border-t border-[#FAF9FA]">
-              <button disabled={currentIndex === 0} onClick={handlePrevQuestion} className="px-4 py-2 border border-[#9A87A9]/30 rounded-lg text-[10px] font-black uppercase tracking-wider text-slate-600 hover:bg-slate-50 disabled:opacity-30 flex items-center gap-1 cursor-pointer">Back</button>
-              <button disabled={currentIndex === currentQuestionsList.length - 1} onClick={handleNextQuestion} className="px-4 py-2 border border-[#9A87A9]/30 rounded-lg text-[10px] font-black uppercase tracking-wider text-slate-600 hover:bg-slate-50 disabled:opacity-30 flex items-center gap-1 cursor-pointer">Next Question</button>
+            <div className="flex justify-between items-center pt-5 mt-6 border-t border-slate-50 font-mono">
+              <button 
+                disabled={currentIndex === 0} 
+                onClick={handlePrevQuestion} 
+                className="px-4 py-2 border border-[#9A87A9]/30 rounded-lg text-[10px] font-black uppercase text-slate-700 hover:border-slate-950 disabled:opacity-30 cursor-pointer transition-all active:scale-[0.97]"
+              >
+                Back Item
+              </button>
+              <button 
+                disabled={currentIndex === currentQuestionsList.length - 1} 
+                onClick={handleNextQuestion} 
+                className="px-4 py-2 bg-white border border-[#9A87A9]/30 text-[10px] font-black uppercase text-slate-700 rounded-lg hover:border-slate-950 disabled:opacity-30 cursor-pointer transition-all active:scale-[0.97]"
+              >
+                Next Item
+              </button>
             </div>
           </section>
 
           {/* RIGHT ROADMAP NAV GRID */}
-          <section className="bg-white border border-[#9A87A9]/30 rounded-xl p-5 flex flex-col justify-between shadow-3xs overflow-hidden">
-            <div className="overflow-y-auto">
-              <h4 className="text-[10px] font-black text-[#9A87A9] uppercase tracking-wider font-mono mb-3">Questions Board</h4>
-              <div className="grid grid-cols-4 gap-2">
+          <section className="bg-white border border-[#9A87A9]/30 rounded-xl p-5 flex flex-col justify-between shadow-3xs overflow-hidden text-left">
+            <div className="w-full h-full flex flex-col overflow-hidden">
+              <h4 className="text-[10px] font-black text-[#9A87A9] font-mono uppercase tracking-wider mb-3 border-b pb-1.5">Questions Ledger Grid</h4>
+              <div className="grid grid-cols-4 gap-2 overflow-y-auto pr-1 flex-1 max-h-[290px]">
                 {currentQuestionsList.map((q, idx) => {
                   const active = idx === currentIndex;
                   const answered = answers[q.id] !== undefined && answers[q.id] !== '';
@@ -568,22 +582,22 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
                     <button 
                       key={q.id} 
                       onClick={() => setActiveIndices({ ...activeIndices, [activeSection]: idx })} 
-                      className={`h-9 text-xs font-black font-mono border transition-all rounded-lg flex items-center justify-center relative cursor-pointer ${
-                        active ? 'border-[#2A1A63] bg-[#2A1A63] text-white shadow-md' : 
-                        answered ? 'border-[#9A87A9]/60 bg-[#FAF9FA] text-[#2A1A63]' : 'border-[#9A87A9]/30 bg-white text-[#9A87A9] hover:border-[#9A87A9]/60'
+                      className={`h-9 text-xs font-black font-mono border transition-all rounded-lg flex items-center justify-center relative cursor-pointer active:scale-[0.93] ${
+                        active ? 'bg-[#2A1A63] text-white border-[#2A1A63] shadow-md font-black' : 
+                        answered ? 'bg-indigo-50 border-indigo-200 text-[#2A1A63] font-black' : 'bg-white border-[#9A87A9]/20 text-[#9A87A9] hover:border-[#9A87A9]/40'
                       }`}
                     >
                       {idx + 1}
-                      {answered && !active && <div className="absolute top-1 right-1 w-1.5 h-1.5 bg-[#2A1A63] rounded-full" />}
+                      {answered && !active && <div className="absolute top-1 right-1 w-1 h-1 bg-[#2A1A63] rounded-full" />}
                     </button>
                   );
                 })}
               </div>
             </div>
             
-            <div className="pt-4 border-t border-[#FAF9FA] mt-6 shrink-0">
-              <button onClick={() => setShowSubmitModal(true)} className="w-full py-3 bg-[#C62927] hover:opacity-90 text-white font-black text-xs uppercase tracking-wider transition-all rounded-lg shadow-md cursor-pointer text-center active:scale-[0.98]">
-                Submit Assessment Paper
+            <div className="pt-4 border-t border-slate-50 mt-4 shrink-0">
+              <button onClick={() => setShowSubmitModal(true)} className="w-full py-3 bg-[#C62927] hover:opacity-90 text-white font-black text-xs uppercase tracking-wider tracking-widest transition-all rounded-lg shadow-md cursor-pointer text-center active:scale-[0.98]">
+                Submit Exam Paper
               </button>
             </div>
           </section>
@@ -593,17 +607,17 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
       {/* CONFIRMATION IN-VIEW MODAL OVERLAYS */}
       {showSubmitModal && (
         <div className="fixed inset-0 bg-slate-950/40 z-[25000] flex items-center justify-center p-4 backdrop-blur-xs">
-          <div className="w-full max-w-sm bg-white border border-[#9A87A9]/30 p-6 rounded-xl shadow-2xl space-y-4">
-            <div className="flex items-center gap-3 border-b border-[#FAF9FA] pb-3">
-              <CheckCircle className="w-4 h-4 text-[#2A1A63]" />
-              <h5 className="text-xs font-black text-slate-950 uppercase tracking-wide">Finish Examination</h5>
+          <div className="w-full max-w-sm bg-white border border-[#9A87A9]/30 p-6 rounded-xl shadow-2xl space-y-4 text-left font-sans">
+            <div className="flex items-center gap-2 border-b border-slate-50 pb-2 text-[#2A1A63]">
+              <CheckCircle className="w-4 h-4 shrink-0" />
+              <h5 className="text-xs font-black uppercase tracking-tight font-mono">Finish Examination Sheet</h5>
             </div>
-            <p className="text-xs text-slate-500 font-medium leading-relaxed">
-              Are you sure you want to finish this test? Clicking submit logs your responses securely to the school grading servers and seals your work.
+            <p className="text-xs text-slate-500 font-bold leading-relaxed">
+              Are you sure you want to finalize this test paper? Clicking submit logs your responses securely onto the core school mainframe matrix database and seals your submission.
             </p>
-            <div className="flex justify-end gap-3 pt-2 font-sans">
-              <button onClick={() => setShowSubmitModal(false)} className="px-4 py-2 border border-[#9A87A9]/30 text-slate-600 hover:bg-slate-50 text-xs font-bold uppercase rounded-lg cursor-pointer">Review Work</button>
-              <button onClick={() => { localStorage.removeItem(localStorageKey); localStorage.removeItem(timerStorageKey); setShowSubmitModal(false); setShowSuccessModal(true); }} className="px-4 py-2 bg-[#2A1A63] text-white text-xs font-bold uppercase rounded-lg shadow-md cursor-pointer">Yes, Submit Paper</button>
+            <div className="flex justify-end gap-2 pt-1 font-mono">
+              <button onClick={() => setShowSubmitModal(false)} className="px-4 py-2 border border-[#9A87A9]/30 text-slate-600 rounded-lg text-xs font-bold uppercase cursor-pointer hover:bg-slate-50">Review Answers</button>
+              <button onClick={() => { localStorage.removeItem(localStorageKey); localStorage.removeItem(timerStorageKey); setShowSubmitModal(false); setShowSuccessModal(true); }} className="px-4 py-2 bg-[#2A1A63] text-white text-xs font-black uppercase rounded-lg shadow-md cursor-pointer">Yes, Submit Paper</button>
             </div>
           </div>
         </div>
@@ -612,18 +626,18 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
       {showSuccessModal && (
         <div className="fixed inset-0 bg-slate-950/70 z-[30000] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm bg-white border border-[#9A87A9]/40 p-6 rounded-xl shadow-2xl space-y-5 text-center select-none">
-            <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto border border-emerald-100">
-              <Award className="w-6 h-6 text-[#2A1A63]" />
+            <div className="w-12 h-12 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-lg flex items-center justify-center mx-auto border-emerald-100 shadow-3xs">
+              <Award className="w-6 h-6 shrink-0" />
             </div>
-            <div>
-              <h4 className="text-xs font-black text-slate-950 uppercase tracking-tight">Paper Submitted Successfully</h4>
-              <p className="text-[10px] text-emerald-600 font-bold font-mono uppercase mt-1">Status: Sealed & Secured</p>
-              <p className="text-xs text-slate-500 font-medium leading-relaxed mt-3">
-                Your answers have been safely delivered to your teacher's folder. You can now close your desk browser safely. Well done!
+            <div className="space-y-1">
+              <h4 className="text-sm font-black text-slate-950 uppercase tracking-tight font-sans">Paper Submitted Successfully</h4>
+              <p className="text-[10px] text-emerald-600 font-bold font-mono uppercase tracking-wider bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-md inline-block">Status: Sealed & Secured</p>
+              <p className="text-xs text-slate-500 font-bold font-sans leading-relaxed pt-2">
+                Your examination answers have been safely logged into your instructor's grading queue folder portfolio. You may now close this browser window. Well done!
               </p>
             </div>
-            <button onClick={() => { setShowSuccessModal(false); onExamSubmit(); }} className="w-full py-2.5 bg-[#2A1A63] text-white text-xs font-black uppercase tracking-wider rounded-lg shadow-md cursor-pointer">
-              Exit Secure Testing Window
+            <button onClick={() => { setShowSuccessModal(false); onExamSubmit(); }} className="w-full py-2.5 bg-[#2A1A63] text-white text-xs font-black uppercase rounded-lg shadow-md cursor-pointer tracking-wider font-mono">
+              Exit Testing Window
             </button>
           </div>
         </div>

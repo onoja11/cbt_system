@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, FileSpreadsheet, ImageIcon, Upload, X, RotateCcw, Lock, Edit3, AlertTriangle, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { ArrowLeft, FileSpreadsheet, ImageIcon, Upload, X, RotateCcw, Lock, Edit3, AlertTriangle, Loader2, MessageSquare } from 'lucide-react';
 import { apiRequest } from '../../core/api';
 
 // Decoupled Module Components
@@ -17,6 +17,7 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
   const [subjectInfo, setSubjectInfo] = useState('');
   const [categoryInfo, setCategoryInfo] = useState('');
   const [assessmentStatus, setAssessmentStatus] = useState('draft');
+  const [feedbackComment, setFeedbackComment] = useState(''); // 💡 ADDED: State tracking for moderator adjustments notes
   const [isLoading, setIsLoading] = useState(true);
 
   const [sectionRules] = useState({
@@ -43,50 +44,54 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
   const [csvPreviewQuestions, setCsvPreviewQuestions] = useState([]); 
   const [isUploadingBulk, setIsUploadingBulk] = useState(false);
 
-  // Custom Modal States for Handling Deletes/Limits smoothly
-  const [modalType, setModalType] = useState(null); // 'bulk_submit' | 'manual_commit' | 'delete_confirm'
+  // Custom Modal States
+  const [modalType, setModalType] = useState(null); 
   const [deleteTargetId, setDeleteTargetId] = useState(null);
   const [errorModal, setErrorModal] = useState({ isOpen: false, title: '', message: '' });
   const [showSuccessNotification, setShowSuccessNotification] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
 
-  // Helper string processors
-  const trim = (str) => String(str || '').trim();
-  const strtolower = (str) => String(str || '').toLowerCase();
+  // Helper string processors safely isolated
+  const cleanString = useCallback((str) => String(str || '').trim().toLowerCase(), []);
 
   // 🛡️ SYSTEM UNLOCK GUARD
-  const resolvedStatus = strtolower(trim(assessmentStatus));
-  const isLocked = resolvedStatus === 'pending_admin' || 
-                   resolvedStatus === 'pending admin' || 
-                   resolvedStatus === 'approved' || 
-                   resolvedStatus === 'exam in progress' || 
-                   resolvedStatus === 'finished (ready to grade)' || 
-                   resolvedStatus === 'graded';
+  const resolvedStatus = useMemo(() => cleanString(assessmentStatus), [assessmentStatus, cleanString]);
+  
+  // 💡 Note: Assessments with 'Rejected' status remain UNLOCKED so teachers can apply updates
+  const isLocked = useMemo(() => {
+    return [
+      'pending_admin', 'pending admin', 'approved', 
+      'exam in progress', 'finished (ready to grade)', 'graded'
+    ].includes(resolvedStatus);
+  }, [resolvedStatus]);
 
   const baseServerDomain = window.API_BASE_URL || 'http://startrite_cbt_api.test';
 
-  // 📊 LIVE SCORE COMPUTATION LOGIC PIPELINES
-  const totalObjectivePoints = questionBank
-    .filter(q => q.type === 'objective')
-    .reduce((sum, q) => sum + (parseFloat(q.score) || 0), 0);
+  // 📊 LIVE SCORE COMPUTATION LOGIC PIPELINES - PERFORMANCE OPTIMIZED
+  const totalObjectivePoints = useMemo(() => {
+    return questionBank
+      .filter(q => cleanString(q.type) === 'objective')
+      .reduce((sum, q) => sum + (parseFloat(q.score) || 0), 0);
+  }, [questionBank, cleanString]);
 
-  const totalTheoryPoints = questionBank
-    .filter(q => q.type === 'theory')
-    .reduce((sum, q) => sum + (parseFloat(q.score) || 0), 0);
+  const totalTheoryPoints = useMemo(() => {
+    return questionBank
+      .filter(q => cleanString(q.type) === 'theory')
+      .reduce((sum, q) => sum + (parseFloat(q.score) || 0), 0);
+  }, [questionBank, cleanString]);
 
-  const refreshQuestionBlueprint = async () => {
+  // Clean extraction handling object wrapper bounds safely
+  const targetAssessmentId = useMemo(() => {
+    if (!assessmentId) return localStorage.getItem('saved_asm_id_context');
+    if (typeof assessmentId === 'object') return assessmentId.id || assessmentId.assessmentId;
+    return assessmentId;
+  }, [assessmentId]);
+
+  const refreshQuestionBlueprint = useCallback(async () => {
+    if (!targetAssessmentId) return;
+
     try {
-      let resolvedId = assessmentId;
-      if (assessmentId && typeof assessmentId === 'object') {
-        resolvedId = assessmentId.id || assessmentId.assessmentId;
-      }
-      if (!resolvedId || String(resolvedId).includes('Object')) {
-        resolvedId = localStorage.getItem('saved_asm_id_context');
-      }
-
-      if (!resolvedId) return;
-
-      const response = await apiRequest(`api/v1/teacher/assessments/${resolvedId}/questions`, { method: 'GET' });
+      const response = await apiRequest(`api/v1/teacher/assessments/${targetAssessmentId}/questions`, { method: 'GET' });
       const data = await response.json();
 
       if (response.ok) {
@@ -94,12 +99,16 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
         setCategoryInfo(data.category || 'Assessment Layer');
         
         const targetModelStatus = data.assessment_status || data.status_label || data.assessment?.status || 'draft';
-        setAssessmentStatus(strtolower(trim(targetModelStatus)));
+        setAssessmentStatus(targetModelStatus);
+        
+        // 💡 ADDED: Capture moderator feedback values out of the response payload array map records
+        const feedback = data.feedback_comment || data.feedback || data.assessment?.feedback_comment || 'fff  ';
+        setFeedbackComment(feedback);
         
         if (data.questions && data.questions.length > 0) {
           const remapped = data.questions.map(q => ({
             id: q.id,
-            type: strtolower(q.type) === 'theory' ? 'theory' : 'objective',
+            type: cleanString(q.type) === 'theory' ? 'theory' : 'objective',
             text: q.question_text || q.questionText,
             score: parseFloat(q.points_weight || q.pointsWeight || 2),
             imageUrl: q.image_url || q.imageUrl || null, 
@@ -107,16 +116,12 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
             options: q.options ? (typeof q.options === 'string' ? JSON.parse(q.options) : q.options).map((opt, idx) => ({
               text: opt.text || opt,
               isCorrect: opt.is_correct !== undefined ? opt.is_correct : (idx === q.correct_option_index || idx === q.correctOptionIndex)
-            })) : undefined
+            })) : []
           }));
           
           setQuestionBank(remapped);
-          
-          const currentSelection = remapped.find(item => item.id === activeQuestionId);
-          if (!currentSelection) loadQuestionIntoEditor(remapped[0]);
         } else {
           setQuestionBank([]);
-          initializeEmptyFormState();
         }
       }
     } catch (error) {
@@ -124,11 +129,11 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [targetAssessmentId, cleanString]);
 
   useEffect(() => {
-    if (assessmentId) refreshQuestionBlueprint();
-  }, [assessmentId]);
+    refreshQuestionBlueprint();
+  }, [refreshQuestionBlueprint]);
 
   const handleCSVFileChange = (e) => {
     if (isLocked) return;
@@ -164,7 +169,7 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
         const imageHandle = columns[5]?.replace(/"/g, '').replace(/\r/g, '').replace(/\n/g, '').trim() || null;
 
         previewRows.push({
-          type: strtolower(type) === 'theory' ? 'theory' : 'objective',
+          type: cleanString(type) === 'theory' ? 'theory' : 'objective',
           text: qText,
           score,
           options: rawOptions ? rawOptions.split('|').map((opt, idx) => ({ text: opt, isCorrect: idx === correctIdx })) : [],
@@ -192,7 +197,7 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
     setCsvFile(null);
     setBulkImages([]);
     setCsvPreviewQuestions([]);
-    triggerNotificationAlert("Bulk spreadsheet workspace cleared successfully.", "success");
+    triggerNotificationAlert("Bulk spreadsheet workspace cleared successfully.");
   };
 
   const triggerNotificationAlert = (msg) => {
@@ -202,13 +207,8 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
   };
 
   const handleBulkCSVExecution = async () => {
-    if (!csvFile || isLocked) return;
+    if (!csvFile || isLocked || !targetAssessmentId) return;
     setIsUploadingBulk(true);
-
-    let resolvedId = assessmentId && typeof assessmentId === 'object' ? assessmentId.id : assessmentId;
-    if (!resolvedId || String(resolvedId).includes('Object')) {
-      resolvedId = localStorage.getItem('saved_asm_id_context');
-    }
 
     const formData = new FormData();
     formData.append('csv_file', csvFile);
@@ -218,7 +218,7 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
 
     try {
       const token = localStorage.getItem('intranet_bearer_token');
-      const response = await fetch(`${baseServerDomain}/api/v1/teacher/assessments/${resolvedId}/questions/bulk`, {
+      const response = await fetch(`${baseServerDomain}/api/v1/teacher/assessments/${targetAssessmentId}/questions/bulk`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -252,14 +252,9 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
   };
 
   const handleManualFormExecution = async () => {
-    if (isLocked) return;
+    if (isLocked || !targetAssessmentId) return;
     const token = localStorage.getItem('intranet_bearer_token');
     const formData = new FormData();
-
-    let resolvedId = assessmentId && typeof assessmentId === 'object' ? assessmentId.id : assessmentId;
-    if (!resolvedId || String(resolvedId).includes('Object')) {
-      resolvedId = localStorage.getItem('saved_asm_id_context');
-    }
 
     formData.append('type', activeSectionTab === 'theory' ? 'Theory' : 'Objective');
     formData.append('question_text', questionText);
@@ -282,8 +277,8 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
     try {
       const isEditSequence = activeQuestionId && !String(activeQuestionId).startsWith('temp_');
       const endpointUrl = isEditSequence 
-        ? `${baseServerDomain}/api/v1/teacher/assessments/${resolvedId}/questions/${activeQuestionId}`
-        : `${baseServerDomain}/api/v1/teacher/assessments/${resolvedId}/questions`;
+        ? `${baseServerDomain}/api/v1/teacher/assessments/${targetAssessmentId}/questions/${activeQuestionId}`
+        : `${baseServerDomain}/api/v1/teacher/assessments/${targetAssessmentId}/questions`;
 
       const response = await fetch(endpointUrl, {
         method: 'POST',
@@ -309,52 +304,47 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
       }
     } catch (error) {
       console.error(error);
+    } finally {
+      setModalType(null);
     }
   };
 
   const executeDeletePipeline = async () => {
-    if (!deleteTargetId || isLocked) return;
-    
-    let resolvedId = assessmentId && typeof assessmentId === 'object' ? assessmentId.id : assessmentId;
-    if (!resolvedId || String(resolvedId).includes('Object')) {
-      resolvedId = localStorage.getItem('saved_asm_id_context');
-    }
+    if (!deleteTargetId || isLocked || !targetAssessmentId) return;
 
     if (String(deleteTargetId).startsWith('temp_')) {
       const remaining = questionBank.filter(q => q.id !== deleteTargetId);
       setQuestionBank(remaining);
-      if (remaining.length > 0) loadQuestionIntoEditor(remaining[0]);
-      else initializeEmptyFormState();
+      initializeEmptyFormState();
       setModalType(null);
       setDeleteTargetId(null);
       return;
     }
     
     try {
-      const response = await apiRequest(`api/v1/teacher/assessments/${resolvedId}/questions/${deleteTargetId}`, { method: 'DELETE' });
+      const response = await apiRequest(`api/v1/teacher/assessments/${targetAssessmentId}/questions/${deleteTargetId}`, { method: 'DELETE' });
       if (response.ok) {
         const remaining = questionBank.filter(q => q.id !== deleteTargetId);
         setQuestionBank(remaining);
-        if (activeQuestionId === deleteTargetId && remaining.length > 0) loadQuestionIntoEditor(remaining[0]);
-        else if (remaining.length === 0) initializeEmptyFormState();
+        initializeEmptyFormState();
         triggerNotificationAlert("Question entry dropped from paper template ledger.");
       }
     } catch (error) { 
       console.error(error); 
-    } finally {
+    } {
       setModalType(null);
       setDeleteTargetId(null);
     }
   };
 
-  const handleConfirmActionDispatch = async () => {
+  const handleConfirmActionDispatch = () => {
     if (isLocked) return;
     if (modalType === 'bulk_submit') {
-      await handleBulkCSVExecution();
+      handleBulkCSVExecution();
     } else if (modalType === 'manual_commit') {
-      await handleManualFormExecution();
+      handleManualFormExecution();
     } else if (modalType === 'delete_confirm') {
-      await executeDeletePipeline();
+      executeDeletePipeline();
     }
   };
 
@@ -362,6 +352,9 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
     setActiveQuestionId(null);
     setQuestionText('');
     setQuestionScore(2);
+    if (manualImagePreview && manualImagePreview.startsWith('blob:')) {
+      URL.revokeObjectURL(manualImagePreview);
+    }
     setManualImageFile(null);
     setManualImagePreview('');
     setDidCancelExistingImage(false);
@@ -372,31 +365,17 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
     }
   };
 
-  const handleLoadQuestionForEditing = (q) => {
-    if (!q) return;
-    setActiveQuestionId(q.id);
-    setQuestionText(q.text);
-    setQuestionScore(q.score);
-    setManualImageFile(null);
-    setDidCancelExistingImage(false);
-    setManualImagePreview(q.imageUrl ? `${baseServerDomain}${q.imageUrl}` : '');
-    setActiveSectionTab(q.type);
-    
-    if (q.type === 'objective') {
-      setOptions(q.options || [{ text: '', isCorrect: true }]);
-    } else {
-      setTheoryRubric(q.rubric || '');
-    }
-  };
-
   const loadQuestionIntoEditor = (q) => {
     if (!q) return;
     setActiveQuestionId(q.id);
     setQuestionText(q.text);
     setQuestionScore(q.score);
+    if (manualImagePreview && manualImagePreview.startsWith('blob:')) {
+      URL.revokeObjectURL(manualImagePreview);
+    }
     setManualImageFile(null);
     setManualImagePreview(q.imageUrl ? `${baseServerDomain}${q.imageUrl}` : ''); 
-    if (q.type === 'objective') {
+    if (cleanString(q.type) === 'objective') {
       setOptions(q.options || [{ text: '', isCorrect: true }]);
     } else {
       setTheoryRubric(q.rubric || '');
@@ -413,6 +392,9 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
     if (isLocked) return;
     const file = e.target.files[0];
     if (file) { 
+      if (manualImagePreview && manualImagePreview.startsWith('blob:')) {
+        URL.revokeObjectURL(manualImagePreview);
+      }
       setManualImageFile(file); 
       setManualImagePreview(URL.createObjectURL(file)); 
       setDidCancelExistingImage(false);
@@ -421,6 +403,9 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
 
   const handleCancelManualImage = () => {
     if (isLocked) return;
+    if (manualImagePreview && manualImagePreview.startsWith('blob:')) {
+      URL.revokeObjectURL(manualImagePreview);
+    }
     setManualImageFile(null);
     setManualImagePreview('');
     setDidCancelExistingImage(true);
@@ -433,9 +418,18 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
     setModalType('delete_confirm');
   };
 
-  const filteredBankList = questionBank.filter(q => q.type === activeSectionTab);
-  const activeQuestionIndex = filteredBankList.findIndex(q => q.id === activeQuestionId);
-  const displayLabelString = activeSectionTab === 'objective' ? `Objective Q${activeQuestionIndex !== -1 ? activeQuestionIndex + 1 : filteredBankList.length + 1}` : `Theory Q${activeQuestionIndex !== -1 ? activeQuestionIndex + 1 : filteredBankList.length + 1}`;
+  const filteredBankList = useMemo(() => {
+    return questionBank.filter(q => cleanString(q.type) === activeSectionTab);
+  }, [questionBank, activeSectionTab, cleanString]);
+
+  const activeQuestionIndex = useMemo(() => {
+    return filteredBankList.findIndex(q => q.id === activeQuestionId);
+  }, [filteredBankList, activeQuestionId]);
+
+  const displayLabelString = useMemo(() => {
+    const num = activeQuestionIndex !== -1 ? activeQuestionIndex + 1 : filteredBankList.length + 1;
+    return activeSectionTab === 'objective' ? `Objective Q${num}` : `Theory Q${num}`;
+  }, [activeSectionTab, activeQuestionIndex, filteredBankList]);
 
   return (
     <div className="min-h-screen bg-[#FAF9FA] flex flex-col justify-between text-[#2A1A63] font-sans selection:bg-[#9A87A9]/30 w-full overflow-x-hidden">
@@ -450,10 +444,10 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
             <div className="mr-1">
               <Logo size={45} showText={false} />
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 text-left">
               <h2 className="text-xs font-black uppercase tracking-wider text-slate-950">Question Setup Terminal</h2>
               <p className="text-[10px] font-bold text-[#9A87A9] font-mono uppercase tracking-wider mt-0.5 truncate">
-                {subjectInfo || 'Startrite Core Module'} • Status: <span className={isLocked ? 'text-[#C62927] font-black' : 'text-emerald-600 font-black'}>{assessmentStatus.toUpperCase()}</span>
+                {subjectInfo || 'Startrite Core Module'} • Status: <span className={resolvedStatus === 'rejected' ? 'text-[#C62927] font-black animate-pulse' : isLocked ? 'text-indigo-600 font-black' : 'text-emerald-600 font-black'}>{assessmentStatus.toUpperCase()}</span>
               </p>
             </div>
           </div>
@@ -472,15 +466,30 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
         </div>
       </header>
 
+      {/* 🎯 ADDED: DYNAMIC MODERATOR ADJUSTMENT NOTIFICATIONS FEED BANNER */}
+      {resolvedStatus === 'rejected' && feedbackComment && (
+        <div className="w-full bg-rose-50 border-b border-rose-200 py-3.5 px-4 md:px-6 shadow-inner animate-fadeIn text-left shrink-0">
+          <div className="max-w-7xl mx-auto flex items-start gap-3">
+            <div className="w-8 h-8 bg-white border border-rose-200 rounded-lg flex items-center justify-center text-[#C62927] shrink-0 shadow-3xs">
+              <MessageSquare className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="text-[9px] font-mono font-black text-[#C62927] uppercase tracking-wider block">Moderation Revision Logs Comments:</span>
+              <p className="text-xs font-bold text-slate-950 mt-0.5 leading-relaxed uppercase select-text">{feedbackComment}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* REAL-TIME LIVE SCORE ACCUMULATION MONITOR BAR */}
-      <div className="w-full max-w-7xl mx-auto px-4 mt-4 grid grid-cols-2 gap-4 shrink-0">
+      <div className="w-full max-w-7xl mx-auto px-4 mt-4 grid grid-cols-2 gap-4 shrink-0 text-left">
         <div className="bg-white border border-[#9A87A9]/20 p-3 rounded-xl shadow-3xs flex justify-between items-center font-mono">
-          <span className="text-[10px] font-black text-[#9A87A9] uppercase">Section A (Obj) Cumulative Total:</span>
-          <span className="text-xs font-black text-slate-950 bg-[#FAF9FA] border border-[#9A87A9]/20 px-2.5 py-0.5 rounded-md">{totalObjectivePoints} Points</span>
+          <span className="text-[10px] font-black text-[#9A87A9] uppercase">Part A (Obj) Total Score:</span>
+          <span className="text-xs font-black text-slate-950 bg-[#FAF9FA] border border-[#9A87A9]/20 px-2.5 py-0.5 rounded-md">{totalObjectivePoints} Marks</span>
         </div>
         <div className="bg-white border border-[#9A87A9]/20 p-3 rounded-xl shadow-3xs flex justify-between items-center font-mono">
-          <span className="text-[10px] font-black text-[#9A87A9] uppercase">Section B (Theory) Cumulative Total:</span>
-          <span className="text-xs font-black text-slate-950 bg-[#FAF9FA] border border-[#9A87A9]/20 px-2.5 py-0.5 rounded-md">{totalTheoryPoints} Points</span>
+          <span className="text-[10px] font-black text-[#9A87A9] uppercase">Part B (Theory) Total Score:</span>
+          <span className="text-xs font-black text-slate-950 bg-[#FAF9FA] border border-[#9A87A9]/20 px-2.5 py-0.5 rounded-md">{totalTheoryPoints} Marks</span>
         </div>
       </div>
 
@@ -495,7 +504,7 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
         <main className="flex-1 flex items-center justify-center bg-[#FAF9FA] w-full py-24">
           <div className="text-xs font-mono text-[#9A87A9] font-black uppercase tracking-widest animate-pulse flex items-center gap-2">
             <Loader2 className="w-4 h-4 animate-spin text-[#2A1A63]" />
-            Synchronizing assessment sheet database profiles across LAN...
+            Synchronizing assessment files from backend matrix...
           </div>
         </main>
       ) : (
@@ -504,23 +513,23 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
           {ingestionMode === 'bulk' && !isLocked ? (
             <div className="w-full grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
               <div className="space-y-4 flex flex-col">
-                <div className="bg-white border border-[#9A87A9]/30 rounded-xl p-5 shadow-3xs space-y-3">
+                <div className="bg-white border border-[#9A87A9]/30 rounded-xl p-5 shadow-3xs space-y-3 text-left">
                   <div className="flex items-center gap-2 pb-2 border-b border-[#FAF9FA]">
                     <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                    <h4 className="text-xs font-black uppercase tracking-wide text-slate-950">CSV Spreadsheet Columns</h4>
+                    <h4 className="text-xs font-black uppercase tracking-wide text-slate-950">CSV Spreadsheet Structure Rules</h4>
                   </div>
                   <p className="text-[11px] text-slate-500 leading-relaxed font-mono bg-[#FAF9FA] p-3 border border-[#9A87A9]/20 rounded-lg">
-                    <strong>Mandatory Ordering Structure:</strong><br />
+                    <strong>Mandatory Column Alignment Map:</strong><br />
                     0: Type (Objective/Theory)<br />
                     1: Question_Text<br />
                     2: Points_Weight<br />
-                    3: Options (Split answers with |)<br />
+                    3: Options (Split parameters with |)<br />
                     4: Correct_Option_Index (0 for A)<br />
                     5: Image_Handle (e.g., cell.png)
                   </p>
                 </div>
 
-                <div className="bg-white border border-[#9A87A9]/30 rounded-xl p-5 shadow-3xs flex-1 flex flex-col justify-between min-h-[260px]">
+                <div className="bg-white border border-[#9A87A9]/30 rounded-xl p-5 shadow-3xs flex-1 flex flex-col justify-between min-h-[260px] text-left">
                   <div className="space-y-3">
                     <div className="flex items-center gap-2 pb-2 border-b border-[#FAF9FA]">
                       <ImageIcon className="w-4 h-4 text-[#2A1A63]" />
@@ -566,7 +575,7 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
                   <span className="text-xs font-black text-slate-700 uppercase font-mono">{csvFile ? `Attached: ${csvFile.name}` : 'Select or drop your formatted school template .csv question list'}</span>
                 </div>
 
-                <div className="bg-[#FAF9FA] border border-[#9A87A9]/30 rounded-xl p-4 flex-1 h-[360px] overflow-y-auto shadow-inner">
+                <div className="bg-[#FAF9FA] border border-[#9A87A9]/30 rounded-xl p-4 flex-1 h-[360px] overflow-y-auto shadow-inner text-left">
                   <span className="text-[10px] font-mono font-black text-[#9A87A9] uppercase tracking-wider block mb-3">Spreadsheet Question Data Row Preview</span>
                   
                   <div className="space-y-2.5">
@@ -579,7 +588,7 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
                           <div key={idx} className="p-4 bg-white border border-[#9A87A9]/20 rounded-xl shadow-3xs font-sans text-left">
                             <div className="flex justify-between items-center border-b border-[#FAF9FA] pb-1.5 mb-2 font-mono text-[9px] font-black text-[#9A87A9] uppercase">
                               <span>Spreadsheet Item Row {idx + 1} — {q.type}</span>
-                              <span className="text-slate-950 bg-white border px-1.5 py-0.5 rounded-md font-black">{q.score} Points</span>
+                              <span className="text-slate-950 bg-white border px-1.5 py-0.5 rounded-md font-black">{q.score} Marks</span>
                             </div>
                             <p className="text-xs font-bold text-slate-900 leading-relaxed">{q.text}</p>
                             
@@ -630,9 +639,9 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
                     <ManualForm activeSectionTab={activeSectionTab} questionScore={questionScore} setQuestionScore={setQuestionScore} manualImageFile={manualImageFile} onImageDrop={handleManualImageDrop} questionText={questionText} setQuestionText={setQuestionText} options={options} setOptions={setOptions} theoryRubric={theoryRubric} setTheoryRubric={setTheoryRubric} onAddOption={() => setOptions([...options, { text: 'New Option', isCorrect: false }])} onRemoveOption={(idx) => setOptions(options.filter((_, i) => i !== idx))} onCommitChanges={() => setModalType('manual_commit')} />
                     
                     {manualImagePreview && (
-                      <div className="absolute top-[310px] right-4 bg-white border border-[#9A87A9]/30 p-2 rounded-xl flex items-center gap-2 max-w-[190px] shadow-md z-50">
+                      <div className="absolute top-[310px] right-4 bg-white border border-[#9A87A9]/30 p-2 rounded-xl flex items-center gap-2 max-w-[190px] shadow-md z-50 text-left">
                         <img src={manualImagePreview} className="w-8 h-8 object-contain bg-[#FAF9FA] border rounded shadow-3xs" alt="thumb" />
-                        <span className="text-[8px] font-mono text-[#9A87A9] uppercase font-black truncate block flex-1">Image Added</span>
+                        <span className="text-[8px] font-mono text-[#9A87A9] uppercase font-black truncate block flex-1">Image Attached</span>
                         <button onClick={handleCancelManualImage} className="p-1 bg-[#FAF9FA] hover:bg-rose-100 text-[#9A87A9] hover:text-[#C62927] rounded-full cursor-pointer transition-all"><X className="w-3 h-3" /></button>
                       </div>
                     )}
@@ -658,10 +667,10 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
                       
                       <div className="space-y-2.5 w-full text-left">
                         {filteredBankList.length === 0 ? (
-                          <div className="p-8 text-center text-xs font-mono text-[#9A87A9] font-bold uppercase bg-white border border-dashed border-[#9A87A9]/30 rounded-xl py-12">No test entries compiled within this section folder blueprint yet.</div>
+                          <div className="p-8 text-center text-xs font-mono text-[#9A87A9] font-bold uppercase bg-white border border-dashed border-[#9A87A9]/30 rounded-xl py-12">No test entries compiled within this section blueprint folder yet.</div>
                         ) : (
                           filteredBankList.map((q, idx) => (
-                            <div key={q.id || idx} className={`p-4 bg-white border rounded-xl shadow-3xs transition-all relative group/row ${q.id === activeQuestionId ? 'border-[#2A1A63] ring-1 ring-[#2A1A63]/10 bg-[#FAF9FA]/40' : 'border-[#9A87A9]/20'}`}>
+                            <div key={q.id || idx} className={`p-4 bg-white border rounded-xl shadow-3xs transition-all relative group/row text-left ${q.id === activeQuestionId ? 'border-[#2A1A63] ring-1 ring-[#2A1A63]/10 bg-[#FAF9FA]/40' : 'border-[#9A87A9]/20'}`}>
                               
                               {!isLocked && (
                                 <button 
@@ -674,7 +683,7 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
 
                               <div className="flex justify-between items-center border-b border-[#FAF9FA] pb-1.5 mb-2 font-mono text-[9px] font-black text-[#9A87A9] uppercase">
                                 <span>Question Paper Slot {idx + 1}</span>
-                                <span className="bg-[#FAF9FA] px-1.5 py-0.5 rounded border border-[#9A87A9]/10 text-slate-950 font-black pr-12">{q.score} Points Score</span>
+                                <span className="bg-[#FAF9FA] px-1.5 py-0.5 rounded border border-[#9A87A9]/10 text-slate-950 font-black pr-12">{q.score} Marks Weight</span>
                               </div>
                               <p className="text-xs font-bold text-slate-950 leading-relaxed font-sans">{q.text}</p>
                               
@@ -699,15 +708,16 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
                                   ))}
                                 </div>
                               )}
-
+                              
                               {q.type === 'theory' && q.rubric && (
-                                <div className="mt-3 p-2.5 bg-amber-50 border border-amber-100 rounded-lg text-[10px] font-medium text-slate-700 leading-relaxed font-sans">
-                                  <span className="font-black text-amber-800 block uppercase font-mono text-[9px] mb-0.5">Rubric Grading Guide Guidelines:</span>
-                                  💡 {q.rubric}
+                                <div className="mt-3 p-3 bg-[#2A1A63] rounded-xl text-white font-mono text-[11px] leading-relaxed shadow-3xs border">
+                                  <span className="text-[9px] text-[#9A87A9] font-black block uppercase tracking-wide mb-0.5">💡 Grading Key Rubric:</span>
+                                  {q.rubric}
                                 </div>
                               )}
                             </div>
-                          )))}
+                          ))
+                        )}
                       </div>
                     </div>
                   </section>
@@ -735,9 +745,7 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
           modalType === 'manual_commit' ? "Save Question Entry" : "Yes, Delete Item"
         }
         cancelLabel="Abort Action"
-        onConfirm={
-          modalType === 'delete_confirm' ? executeDeletePipeline : handleConfirmActionDispatch
-        }
+        onConfirm={handleConfirmActionDispatch}
         onCancel={() => { setModalType(null); setDeleteTargetId(null); }}
         summaryData={
           modalType === 'bulk_submit' ? { "Source Spreadsheet": csvFile?.name, "Total Staged Rows": `${csvPreviewQuestions.length} Items Map` } :
