@@ -65,7 +65,7 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
     ].includes(resolvedStatus);
   }, [resolvedStatus]);
 
-  const baseServerDomain = window.API_BASE_URL || 'http://startrite_cbt_api.test';
+  const baseServerDomain = window.API_BASE_URL || 'https://startrite-api.onrender.com';
 
   // 📊 LIVE SCORE COMPUTATION LOGIC PIPELINES - PERFORMANCE OPTIMIZED
   const totalObjectivePoints = useMemo(() => {
