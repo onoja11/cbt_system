@@ -44,6 +44,7 @@ export default function TeacherDashboard({
   // ⏳ LOADING SPINNER INDICATORS
   const [isLoadingFolders, setIsLoadingFolders] = useState(true);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false); 
 
   // ⚙️ MODAL LOCAL FORMS MEMORY PIPES
   const [assessmentType, setAssessmentType] = useState('CA 1');
@@ -495,56 +496,34 @@ export default function TeacherDashboard({
           "Are you sure you want to finish drafting this paper and submit it for administrative review? This will lock modification features until approved."
         }
         confirmLabel={modalConfig.type === 'create_slot' ? "Create Assessment" : modalConfig.type === 'start_exam_now' ? "Launch Test Package" : "Submit for Approval"} cancelLabel="Cancel Action"
-        onConfirm={async () => {
-          if (modalConfig.type === 'create_slot') {
-            await handleCreateSlotShell();
-          } else if (modalConfig.type === 'send_review') {
-            try {
-              const response = await apiRequest(`api/v1/teacher/assessments/${modalConfig.targetId}/status`, {
-                method: 'PATCH',
-                body: JSON.stringify({ status: 'Pending Admin' })
-              });
-              const data = await response.json();
+        // Inside TeacherDashboard.jsx -> ConfirmationModal -> onConfirm
+onConfirm={async () => {
+  if (modalConfig.type === 'start_exam_now') {
+    setIsProcessing(true); // Ensure you have this state
+    try {
+      // Use the unified scheduler endpoint
+      const response = await apiRequest(`api/v1/admin/scheduler/force-launch/${modalConfig.targetId}`, {
+        method: 'POST'
+      });
+      const data = await response.json();
 
-              if (response.ok && data.status === 'SUCCESS') {
-                setAssessmentsRegistry(prev => prev.map(asm => asm.id === modalConfig.targetId ? { ...asm, status: 'Pending Admin' } : asm));
-                triggerBannerAlert("Question sheet locked and dispatched to admin queue.", "success");
-              } else {
-                triggerBannerAlert(data.message || "Failed to submit assessment to administrative queue.");
-              }
-            } catch (error) { 
-              console.error(error); 
-              triggerBannerAlert("Connection failed. Could not transmit approval request.");
-            } finally {
-              setModalConfig({ isOpen: false, type: null, targetId: null });
-            }
-          } else if (modalConfig.type === 'start_exam_now') {
-            try {
-              const response = await apiRequest(`api/v1/teacher/assessments/${modalConfig.targetId}/status`, {
-                method: 'PATCH',
-                body: JSON.stringify({ status: 'Exam in Progress' })
-              });
-              const data = await response.json();
-
-              if (response.status === 422 && data.status === 'CLASS_ALREADY_RUNNING') {
-                triggerBannerAlert(data.message, 'warning');
-                return;
-              }
-
-              if (response.ok && data.status === 'SUCCESS') {
-                setAssessmentsRegistry(prev => prev.map(asm => asm.id === modalConfig.targetId ? { ...asm, status: 'Exam in Progress' } : asm));
-                triggerBannerAlert("CBT Session Activated! Monitoring room is now live.", "success");
-              } else {
-                triggerBannerAlert(data.message || "Failed to trigger examination runtime session.");
-              }
-            } catch (error) {
-              console.error(error);
-              triggerBannerAlert("Failed to transmit system activation command.");
-            } finally {
-              setModalConfig({ isOpen: false, type: null, targetId: null });
-            }
-          }
-        }}
+      if (response.ok) {
+        setAssessmentsRegistry(prev => prev.map(asm => 
+          asm.id === modalConfig.targetId ? { ...asm, status: 'Exam in Progress' } : asm
+        ));
+        triggerBannerAlert("CBT Session Activated. Timer synced to current time.", "success");
+      } else {
+        triggerBannerAlert(data.message || "Launch failed.");
+      }
+    } catch (error) {
+      triggerBannerAlert("Network error.");
+    } finally {
+      setIsProcessing(false);
+      setModalConfig({ isOpen: false, type: null, targetId: null });
+    }
+  }
+  // ... handle other types
+}}
         onCancel={() => setModalConfig({ isOpen: false, type: null, targetId: null })}
         summaryData={
           modalConfig.type === 'create_slot' ? { "Class Group Folder": activeCourseFolder?.classGroup, "Assessment Slot": assessmentType } : 

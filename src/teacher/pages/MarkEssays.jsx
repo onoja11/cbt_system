@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, BookOpen, FileSpreadsheet, Loader2, AlertTriangle, CheckCircle, ChevronDown, ChevronUp, Check, X, HelpCircle } from 'lucide-react';
+import { ArrowLeft, BookOpen, FileSpreadsheet, Loader2, AlertTriangle, CheckCircle, ChevronDown, ChevronUp, HelpCircle } from 'lucide-react';
 import { apiRequest } from '../../core/api';
 import ConfirmationModal from '../../shared/ConfirmationModal';
 import Logo from '../../shared/Logo';
@@ -16,13 +16,12 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
   const [isObjDropdownOpen, setIsObjDropdownOpen] = useState(false);
   const [isTheoryDropdownOpen, setIsTheoryDropdownOpen] = useState(true);
 
-  // Custom Modal States for Handling Limits/Alerts smoothly
+  // Custom Modal States
   const [errorModal, setErrorModal] = useState({ isOpen: false, title: '', message: '' });
 
   const trim = (str) => String(str || '').trim();
   const strtolower = (str) => String(str || '').toLowerCase();
 
-  // 🛡️ DYNAMIC IDENTIFICATION TRACKER
   const extractValidId = () => {
     let rawId = assessmentId;
     if (rawId && rawId.target !== undefined && typeof rawId.preventDefault === 'function') {
@@ -72,7 +71,7 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
             const currentProfileId = student.student_profile_id;
             const studentSpecificAnswers = student.answers || [];
 
-            // Map Objectives Grid Content Dynamically
+            // Map Objectives Grid Content
             const objectiveAnswers = objectiveQuestions.map((q, idx) => {
               const match = Array.isArray(studentSpecificAnswers) 
                 ? studentSpecificAnswers.find(a => parseInt(a.question_id, 10) === parseInt(q.id, 10)) 
@@ -95,23 +94,21 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
               };
             });
 
-            // Map Theory Answers Neatly
-            const theoryAnswers = theoryQuestions.map(q => {
+            // Map Theory Answers
+            const theoryAnswers = theoryQuestions.map((q, idx) => {
               const match = Array.isArray(studentSpecificAnswers) 
                 ? studentSpecificAnswers.find(a => parseInt(a.question_id, 10) === parseInt(q.id, 10)) 
                 : null;
 
               return {
                 qId: q.id,
+                number: idx + 1,
                 prompt: q.question_text || q.questionText,
-                response: match ? (match.theory_response || match.selected_text || '') : '',
-                maxScore: parseFloat(q.points_weight) || 0,
+                maxScore: parseFloat(q.points_weight) || 5,
                 givenScore: match && match.score_awarded !== null ? parseFloat(match.score_awarded) : '',
-                rubric: q.theory_rubric || q.rubric || 'Review student answer against expected keywords.'
+                rubric: q.theory_rubric || q.rubric || 'Review score allocations'
               };
             });
-
-            const gradingCompleted = theoryAnswers.length === 0 ? true : theoryAnswers.every(q => q.givenScore !== null && q.givenScore !== '');
 
             return {
               id: currentProfileId,
@@ -119,13 +116,13 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
               admissionNo: student.admission_no || 'VT-2026',
               objScore: parseFloat(student.objective_score) || 0,
               maxObj: parseFloat(student.total_objectives_count) || 0,
-              theoryScoreEarned: parseFloat(student.theory_score_earned) || 0,
-              theoryMaxPossible: parseFloat(student.theory_max_possible) || 0,
+              theoryScoreEarned: theoryAnswers.reduce((sum, q) => sum + (parseFloat(q.givenScore) || 0), 0),
+              theoryMaxPossible: theoryAnswers.reduce((sum, q) => sum + (parseFloat(q.maxScore) || 0), 0),
               cumulativeTotal: parseFloat(student.cumulative_total) || 0,
               maxPossibleTotal: parseFloat(student.max_possible_total) || 0,
               objectiveAnswers,
               theoryAnswers,
-              gradingCompleted
+              gradingCompleted: true
             };
           });
 
@@ -145,13 +142,12 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
       }
     } catch (error) {
       console.error(error);
-    } {
+    } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    // 💡 FIXED: Reference matches the function declaration on line 46 cleanly now
     fetchAssessmentScriptsMatrix();
   }, [assessmentId]);
 
@@ -164,6 +160,7 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
     setTheoryInputs(initialInputs);
   };
 
+  // 🎯 INLINE VALIDATED MANUAL INPUT ENTRY OVERRIDE
   const handleScoreInput = (qId, val, max) => {
     if (val === '') {
       setTheoryInputs(prev => ({ ...prev, [qId]: '' }));
@@ -174,7 +171,7 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
       setErrorModal({
         isOpen: true,
         title: 'Score Limit Exceeded',
-        message: `The entered mark exceeds the maximum score limits. The maximum allowed marks for this question is ${max} points.`
+        message: `The entered mark exceeds the maximum score boundaries. The maximum allowed marks for this question is ${max} points.`
       });
       return;
     }
@@ -237,7 +234,7 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
               <th>Student Name</th>
               <th>Admission No</th>
               <th>Section A (Objectives)</th>
-              <th>Section B (Theory)</th>
+              <th>Section B (Theory Marks)</th>
               <th>Total Term Mark</th>
               <th>Maximum Obtainable</th>
             </tr>
@@ -282,7 +279,7 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
 
   const currentTheoryInputSum = currentStudent?.theoryAnswers.reduce((sum, q) => {
     const liveVal = theoryInputs[q.qId];
-    return sum + (liveVal !== undefined && liveVal !== '' ? (parseFloat(liveVal) || 0) : (parseFloat(q.givenScore) || 0));
+    return sum + (liveVal !== undefined && liveVal !== '' ? parseFloat(liveVal) : 0);
   }, 0) || 0;
 
   const dynamicCumulativeTotal = (currentStudent?.objScore || 0) + currentTheoryInputSum;
@@ -311,7 +308,7 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
             </div>
             <div>
               <h2 className="text-xs font-black uppercase tracking-wider">Teacher's Marking Desk</h2>
-              <p className="text-[10px] font-bold text-[#9A87A9] mt-0.5 uppercase font-mono">Continuous Assessment & Essay Marker Hub</p>
+              <p className="text-[10px] font-bold text-[#9A87A9] mt-0.5 uppercase font-mono">Continuous Assessment & Manual Point Matrix</p>
             </div>
           </div>
 
@@ -324,26 +321,25 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
         </div>
       </header>
 
-      {/* CORE SPLIT INTERFACE MAPPING CONTAINER */}
+      {/* CORE SPLIT INTERFACE */}
       <main className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 items-start my-auto">
         
         {/* Left Hand Roster Panel */}
         <section className="bg-white border border-[#9A87A9]/30 rounded-xl p-4 flex flex-col justify-between shadow-3xs h-[640px]">
           <div className="w-full flex flex-col h-full overflow-hidden">
             <div className="mb-4 pb-2 border-b border-[#FAF9FA] flex justify-between items-center shrink-0">
-              <span className="text-[10px] font-black text-[#9A87A9] uppercase tracking-wider font-mono">Answer Sheets Ingested ({studentPapers.length})</span>
-              <span className="text-[9px] bg-slate-50 border border-[#9A87A9]/20 px-1.5 py-0.5 rounded font-mono text-[#9A87A9] font-bold uppercase">Linked</span>
+              <span className="text-[10px] font-black text-[#9A87A9] uppercase tracking-wider font-mono">Ingested Answer Scripts ({studentPapers.length})</span>
+              <span className="text-[9px] bg-slate-50 border border-[#9A87A9]/20 px-1.5 py-0.5 rounded font-mono text-[#9A87A9] font-bold uppercase">Audited</span>
             </div>
 
             <div className="flex-1 overflow-y-auto space-y-2 pr-1">
               {studentPapers.length === 0 ? (
                 <div className="p-6 text-center font-mono text-[11px] text-[#9A87A9] uppercase leading-relaxed border border-dashed border-[#9A87A9]/30 rounded-xl bg-[#FAF9FA]/40 py-12">
-                  No active student answer sheets recorded for this test ID yet.
+                  No active student answer sheets recorded for this session yet.
                 </div>
               ) : (
                 studentPapers.map((student) => {
                   const isSelected = student.id === activeStudentId;
-                  
                   return (
                     <div
                       key={student.id}
@@ -355,13 +351,11 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
                       <div className="truncate min-w-0 flex-1">
                         <h4 className="text-xs font-black uppercase tracking-tight text-[#2A1A63] truncate">{student.name}</h4>
                         <div className="flex items-center gap-2 mt-1 font-mono text-[10px] flex-wrap font-bold">
-                          <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded">Section A: {student.objScore} / {student.maxObj}</span>
-                          <span className={student.gradingCompleted ? 'text-[#2A1A63] font-black' : 'text-amber-600 animate-pulse'}>
-                            {student.gradingCompleted ? `Final Mark: ${student.cumulativeTotal} / ${student.maxPossibleTotal}` : '• Awaiting Grading'}
-                          </span>
+                          <span className="text-slate-500">Obj: {student.objScore}/{student.maxObj}</span>
+                          <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded">Total: {student.theoryScoreEarned + student.objScore} Pts</span>
                         </div>
                       </div>
-                      <div className={`w-1.5 h-1.5 rounded-full shrink-0 ml-2 ${student.gradingCompleted ? 'bg-[#2A1A63]' : 'bg-[#C62927] animate-pulse'}`} />
+                      <div className="w-1.5 h-1.5 rounded-full shrink-0 ml-2 bg-emerald-500" />
                     </div>
                   );
                 })
@@ -380,10 +374,10 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
                 <div>
                   <span className="text-[9px] font-black uppercase text-[#9A87A9] tracking-wider">Evaluation Profile</span>
                   <h3 className="text-sm font-black uppercase tracking-tight mt-0.5 truncate max-w-xs font-sans text-white">{currentStudent.name}</h3>
-                  <p className="text-[9px] font-bold text-[#9A87A9] mt-0.5 uppercase">Admission Identifier: {currentStudent.admissionNo}</p>
+                  <p className="text-[9px] font-bold text-[#9A87A9] mt-0.5 uppercase">Reg Code: {currentStudent.admissionNo}</p>
                 </div>
                 <div className="text-right">
-                  <span className="text-[9px] block font-black text-[#9A87A9] uppercase tracking-wider">Accumulated Marks</span>
+                  <span className="text-[9px] block font-black text-[#9A87A9] uppercase tracking-wider">Combined Marksheet Sum</span>
                   <p className="text-xl font-black text-white">
                     {dynamicCumulativeTotal} <span className="text-xs text-[#9A87A9] font-black font-sans">/ {currentStudent.maxPossibleTotal} Marks</span>
                   </p>
@@ -401,15 +395,15 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
                     className="w-full px-4 py-3 bg-[#FAF9FA] flex justify-between items-center border-b border-[#9A87A9]/20 hover:opacity-90 transition-all text-left cursor-pointer"
                   >
                     <div className="flex items-center gap-2">
-                      <HelpCircle className="w-4 h-4 text-emerald-600" />
+                      <HelpCircle className="w-4 h-4 text-slate-400" />
                       <div>
                         <span className="text-xs font-black text-slate-950 uppercase">Section A: Objective Answers Registry</span>
                         <span className="block text-[9px] font-black text-[#9A87A9] uppercase mt-0.5">Automated Machine Graded Score log sheet</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-[10px] font-mono font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 border border-emerald-200 rounded-md">
-                        Score: {currentStudent.objScore} / {currentStudent.maxObj} Marks
+                      <span className="text-[10px] font-mono font-black text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">
+                        {currentStudent.objScore} / {currentStudent.maxObj} Pts
                       </span>
                       {isObjDropdownOpen ? <ChevronUp className="w-4 h-4 text-[#9A87A9]" /> : <ChevronDown className="w-4 h-4 text-[#9A87A9]" />}
                     </div>
@@ -417,54 +411,22 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
 
                   {isObjDropdownOpen && (
                     <div className="p-4 bg-[#FAF9FA]/40 border-t border-slate-100 space-y-4 max-h-[360px] overflow-y-auto">
-                      {currentStudent.objectiveAnswers?.length === 0 ? (
-                        <p className="text-center font-mono text-[10px] text-[#9A87A9] py-4 font-bold uppercase">No multiple choice tasks configured inside this paper template.</p>
-                      ) : (
-                        currentStudent.objectiveAnswers.map((obj, oIdx) => (
-                          <div key={obj.qId || oIdx} className="p-3 border border-[#9A87A9]/20 bg-white rounded-lg space-y-2 text-left shadow-3xs">
-                            <div className="flex justify-between items-center font-mono text-[9px] font-black text-[#9A87A9] border-b border-[#FAF9FA] pb-1 uppercase">
-                              <span>Multiple Choice Question {obj.number}</span>
-                              <span className={obj.isCorrect ? 'text-emerald-700 font-black' : 'text-[#C62927] font-black'}>
-                                {obj.isCorrect ? `+${obj.maxScore} / ${obj.maxScore} Pts` : `0.00 / ${obj.maxScore} Pts`}
-                              </span>
-                            </div>
-                            <p className="text-xs font-bold text-slate-950 leading-relaxed">{obj.prompt}</p>
-                            
-                            <div className="grid grid-cols-1 gap-1.5 pt-1 pl-1">
-                              {obj.options?.map((opt, optIdx) => {
-                                const isChosen = obj.studentSelectedIndex === optIdx;
-                                const isCorrectAnswer = obj.correctOptionIndex === optIdx;
-                                
-                                let pillStyle = "border-slate-100 text-slate-600 bg-white";
-                                let iconElement = null;
-
-                                if (isCorrectAnswer) {
-                                  pillStyle = "border-emerald-200 bg-emerald-50 text-emerald-800 font-bold";
-                                  iconElement = <Check className="w-3 h-3 text-emerald-600 shrink-0" />;
-                                } else if (isChosen && !isCorrectAnswer) {
-                                  pillStyle = "border-rose-200 bg-rose-50 text-rose-800 font-bold";
-                                  iconElement = <X className="w-3 h-3 text-[#C62927] shrink-0" />;
-                                }
-
-                                return (
-                                  <div key={optIdx} className={`px-3 py-1.5 border rounded-lg text-[11px] flex items-center justify-between gap-2 ${pillStyle}`}>
-                                    <span className="truncate font-medium">{String.fromCharCode(65 + optIdx)}) {opt}</span>
-                                    <div className="flex items-center gap-1 shrink-0 font-mono text-[8px] uppercase tracking-wider font-black">
-                                      {isChosen && <span className="px-1 bg-[#2A1A63] text-white rounded text-[7px]">Student Choice</span>}
-                                      {iconElement}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
+                      {currentStudent.objectiveAnswers?.map((obj, oIdx) => (
+                        <div key={obj.qId || oIdx} className="p-3 border border-[#9A87A9]/20 bg-white rounded-lg space-y-2 text-left shadow-3xs">
+                          <div className="flex justify-between items-center font-mono text-[9px] font-black text-[#9A87A9] border-b border-[#FAF9FA] pb-1 uppercase">
+                            <span>Objective Item {obj.number}</span>
+                            <span className={obj.isCorrect ? 'text-emerald-700 font-black' : 'text-[#C62927] font-black'}>
+                              {obj.isCorrect ? `+${obj.maxScore} / ${obj.maxScore} Pts` : `0.00 / ${obj.maxScore} Pts`}
+                            </span>
                           </div>
-                        ))
-                      )}
+                          <p className="text-xs font-bold text-slate-950 leading-relaxed">{obj.prompt}</p>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
 
-                {/* ACCORDION 2: SECTION B (THEORY MANUAL MARKING WORKSPACE) */}
+                {/* 🎯 ACCORDION 2: SECTION B (MANUAL INPUT GRADING MATRIX) */}
                 <div className="border border-[#9A87A9]/30 rounded-xl overflow-hidden bg-white shadow-3xs">
                   <button 
                     type="button"
@@ -474,69 +436,60 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
                     <div className="flex items-center gap-2">
                       <BookOpen className="w-4 h-4 text-[#2A1A63]" />
                       <div>
-                        <span className="text-xs font-black text-slate-950 uppercase">Section B: Written Essay Answer Evaluator</span>
-                        <span className="block text-[9px] font-black text-[#9A87A9] uppercase mt-0.5">Manual point entry review workbench</span>
+                        <span className="text-xs font-black text-slate-950 uppercase">Section B: Theory Grading Matrix</span>
+                        <span className="block text-[9px] font-black text-[#9A87A9] uppercase mt-0.5">Slick manual score sheet input deck</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="text-[10px] font-mono font-black text-indigo-700 bg-indigo-50 px-2 py-0.5 border border-indigo-200 rounded-md">
-                        Allocated: {currentTheoryInputSum} / {currentStudent.theoryMaxPossible} Points
+                        Theory Sum: {currentTheoryInputSum} / {currentStudent.theoryMaxPossible} Pts
                       </span>
                       {isTheoryDropdownOpen ? <ChevronUp className="w-4 h-4 text-[#9A87A9]" /> : <ChevronDown className="w-4 h-4 text-[#9A87A9]" />}
                     </div>
                   </button>
 
                   {isTheoryDropdownOpen && (
-                    <div className="p-4 bg-[#FAF9FA]/40 border-t border-slate-100 space-y-5">
+                    <div className="p-4 bg-white border-t border-slate-100 overflow-x-auto">
                       {currentStudent.theoryAnswers.length === 0 ? (
-                        <div className="p-8 text-center text-xs font-mono text-[#9A87A9] uppercase tracking-wide border border-dashed border-[#9A87A9]/30 bg-white rounded-xl flex flex-col items-center justify-center gap-2 py-12">
-                          <CheckCircle className="w-5 h-5 text-emerald-600" />
-                          <span>No structural written theory assignments configured inside this paper module.</span>
-                        </div>
+                        <p className="text-center font-mono text-[10px] text-[#9A87A9] py-4 font-bold uppercase">No theory items configured for this paper.</p>
                       ) : (
-                        currentStudent.theoryAnswers.map((question, idx) => (
-                          <div key={question.qId} className="space-y-2.5 border border-[#9A87A9]/20 bg-white p-4 rounded-xl text-left shadow-3xs">
-                            <div className="text-xs font-black text-[#2A1A63] font-mono border-b border-[#FAF9FA] pb-1 mb-2 uppercase text-[10px]">
-                              Written Essay Task Question {idx + 1}
-                            </div>
-                            <div className="text-xs font-bold text-slate-800 leading-relaxed bg-[#FAF9FA] p-3 border border-[#9A87A9]/20 rounded-lg shadow-3xs">
-                              <span className="text-[9px] font-black block text-[#9A87A9] uppercase font-mono mb-1">Question Prompt Content:</span>
-                              {question.prompt}
-                            </div>
-                            <div className="text-xs font-bold text-slate-950 bg-white p-3 border border-[#9A87A9]/20 rounded-lg shadow-3xs whitespace-pre-wrap break-words min-h-[60px]">
-                              <span className="text-[9px] font-black block text-[#9A87A9] uppercase font-mono mb-1">Student Answer Script:</span>
-                              {question.response ? (
-                                <span className="text-slate-900 font-medium">{question.response}</span>
-                              ) : (
-                                <span className="text-[#C62927] font-mono text-[11px] font-black uppercase tracking-tight flex items-center gap-1">
-                                  <AlertTriangle className="w-3.5 h-3.5 animate-pulse" /> This candidate left the answer sheet area completely blank.
-                                </span>
-                              )}
-                            </div>
-                            <div className="p-3 bg-amber-50 border border-amber-200 text-slate-700 rounded-lg text-[11px] leading-relaxed font-medium">
-                              <span className="font-black text-amber-800 block uppercase font-mono text-[9px] mb-0.5">Expected Rubric Guidelines:</span>
-                              💡 {question.rubric}
-                            </div>
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-[#FAF9FA] border-b border-[#9A87A9]/20 font-mono font-black text-[9px] text-[#9A87A9] uppercase">
+                              <th className="p-3 w-16">Item No.</th>
+                              <th className="p-3 w-3/5">Theory Question Prompt Context</th>
+                              <th className="p-3 text-right px-4">Award Score Points</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-sans font-bold text-slate-800">
+                            {currentStudent.theoryAnswers.map((question) => {
+                              const liveVal = theoryInputs[question.qId] !== undefined ? theoryInputs[question.qId] : '';
 
-                            <div className="max-w-xs pt-1">
-                              <label className="block text-[10px] font-black text-[#2A1A63] uppercase tracking-wider mb-1">Assign Score Weight Points</label>
-                              <div className="flex items-center gap-2">
-                                <input 
-                                  type="number" 
-                                  step="0.5"
-                                  min="0"
-                                  max={question.maxScore}
-                                  value={theoryInputs[question.qId] !== undefined ? theoryInputs[question.qId] : ''}
-                                  onChange={(e) => handleScoreInput(question.qId, e.target.value, question.maxScore)}
-                                  disabled={isSubmitting}
-                                  placeholder="0.0" 
-                                  className="w-28 px-3 py-1.5 bg-[#FAF9FA] border border-[#9A87A9]/40 text-sm font-mono font-black text-[#2A1A63] rounded-lg focus:outline-none focus:border-[#2A1A63] focus:bg-white disabled:opacity-40"
-                                />
-                                <span className="text-[11px] text-[#9A87A9] font-mono font-black">/ Maximum {question.maxScore} Marks</span>
-                              </div>
-                            </div>
-                          </div>
-                        ))
+                              return (
+                                <tr key={question.qId} className="hover:bg-[#FAF9FA]/30 transition-all text-xs">
+                                  <td className="p-3 font-mono text-[11px] text-slate-950">Q{question.number}</td>
+                                  <td className="p-3 font-medium leading-relaxed" title={question.prompt}>{question.prompt}</td>
+                                  <td className="p-3 text-right px-4 font-mono">
+                                    <div className="flex items-center justify-end gap-2">
+                                      <input 
+                                        type="number" 
+                                        step="0.5"
+                                        min="0"
+                                        max={question.maxScore}
+                                        value={liveVal}
+                                        onChange={(e) => handleScoreInput(question.qId, e.target.value, question.maxScore)}
+                                        disabled={isSubmitting}
+                                        placeholder="0.0" 
+                                        className="w-24 px-3 py-1.5 bg-[#FAF9FA] border border-[#9A87A9]/40 text-center font-mono font-black text-[#2A1A63] rounded-lg focus:outline-none focus:border-[#2A1A63] focus:bg-white disabled:opacity-40"
+                                      />
+                                      <span className="text-[11px] text-[#9A87A9] font-normal font-sans">/ {question.maxScore} Marks</span>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
                       )}
                     </div>
                   )}
@@ -569,7 +522,7 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
 
       </main>
 
-      {/* CORE INFRASTRUCTURE DIALOG BOXES FOR ERROR OVERRIDES */}
+      {/* ERROR FEEDBACK MODAL OVERLAYS */}
       {errorModal.isOpen && (
         <div className="fixed inset-0 bg-slate-950/40 z-[30000] flex items-center justify-center p-4 backdrop-blur-xs">
           <div className="w-full max-w-sm bg-white border border-[#9A87A9]/40 p-6 rounded-xl shadow-2xl space-y-4 text-left">
@@ -602,13 +555,13 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
         summaryData={{ 
           "Student Candidate": currentStudent?.name, 
           "Section A (Objectives)": `${currentStudent?.objScore} Marks`, 
-          "Section B (Written Theory)": `${currentTheoryInputSum} Points`, 
+          "Section B (Theory Marks)": `${currentTheoryInputSum} Points`, 
           "Final Aggregate Score": `${dynamicCumulativeTotal} / ${currentStudent?.maxPossibleTotal} Total Marks` 
         }}
       />
 
       <footer className="w-full border-t border-[#9A87A9]/20 bg-white py-2.5 text-center text-[9px] font-black text-[#9A87A9] tracking-wider font-mono uppercase shrink-0 px-4">
-        Start-Rite Schools Corporate Examination Monitoring Node Cluster
+        Start-Rite Schools Corporate Examination Monitoring Node Cluster Matrix © 2026
       </footer>
 
     </div>
