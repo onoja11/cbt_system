@@ -477,70 +477,67 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
   }, [activeSectionTab, activeQuestionIndex, filteredBankList]);
 
   return (
-    <div className="min-h-screen bg-[#FAF9FA] flex flex-col justify-between text-[#2A1A63] font-sans selection:bg-[#9A87A9]/30 w-full overflow-x-hidden relative">
+    <div className="min-h-screen bg-[#F7F5FC] flex flex-col justify-between text-[#2A1A63] font-sans selection:bg-[#7C3AED]/20 w-full overflow-x-hidden relative">
       
       {isUploadingBulk && (
         <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs z-[50000] flex flex-col justify-center items-center text-center font-mono">
-          <div className="bg-white border border-[#9A87A9]/40 p-6 rounded-2xl max-w-sm w-full shadow-2xl space-y-4">
+          <div className="bg-white border border-[#E2D5F8] p-6 rounded-3xl max-w-sm w-full shadow-2xl space-y-4">
             <div className="relative w-12 h-12 flex items-center justify-center mx-auto">
-              <Loader2 className="w-10 h-10 animate-spin text-[#2A1A63]" />
+              <Loader2 className="w-10 h-10 animate-spin text-[#7C3AED]" />
               <FileText className="w-4 h-4 text-indigo-600 absolute animate-pulse" />
             </div>
             <div className="text-center">
               <h4 className="text-xs font-black uppercase text-slate-950 tracking-wider">Parsing Document...</h4>
-              <p className="text-[10px] text-[#9A87A9] font-bold uppercase mt-1">Reading matrix math layers safely</p>
+              <p className="text-[10px] text-[#7C6B93] font-bold uppercase mt-1">Reading matrix math layers safely</p>
             </div>
           </div>
         </div>
       )}
 
-      {/* HEADER CONTROLS VAULT */}
-      <header className="w-full bg-white border-b border-[#9A87A9]/30 px-4 md:px-6 py-4 sticky top-0 z-40 shadow-3xs">
-        <div className="max-w-7xl mx-auto flex justify-between items-center w-full">
-          <div className="flex items-center gap-2 min-w-0">
-            <button onClick={onNavigateBack} className="p-1.5 border border-[#9A87A9]/30 rounded-lg text-[#9A87A9] hover:text-[#2A1A63] mr-2 cursor-pointer transition-all active:scale-[0.97] shrink-0">
-              <ArrowLeft className="w-4 h-4" />
+      {/* 🏛️ EXACT REFERENCE GRADIENT HEADER BAR */}
+      <header className="w-full bg-gradient-to-r from-[#7C3AED] via-[#8B5CF6] to-[#A78BFA] px-6 py-3.5 flex justify-between items-center shadow-xs">
+        <div className="flex items-center gap-3 min-w-0">
+          <button onClick={onNavigateBack} className="w-8 h-8 bg-white/20 hover:bg-white/30 text-white rounded-full flex items-center justify-center transition-all cursor-pointer shadow-xs mr-1 shrink-0" title="Back">
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <div className="bg-white p-1 rounded-full shadow-xs flex items-center justify-center">
+            <Logo size={32} showText={false} />
+          </div>
+          <div className="min-w-0 text-left">
+            <h2 className="text-[11px] font-black uppercase tracking-wider text-white">QUESTION SETUP TERMINAL</h2>
+            <p className="text-[11px] font-bold text-white uppercase tracking-wider mt-0.5 truncate">
+              {subjectInfo || 'Startrite Core Module'} • Status: <span className={resolvedStatus === 'rejected' ? 'text-rose-200 font-black animate-pulse' : isLocked ? 'text-indigo-200 font-black' : 'text-emerald-200 font-black'}>{assessmentStatus.toUpperCase()}</span>
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2 shrink-0">
+          {ingestionMode === 'manual' && !isLocked && (
+            <button 
+              onClick={handleUpdateSectionInstructions}
+              disabled={isSavingInstructions}
+              className="px-4 py-2 bg-white/20 hover:bg-white/30 text-white text-xs font-bold uppercase tracking-wider rounded-xl flex items-center gap-1.5 font-mono cursor-pointer transition-all shadow-xs"
+            >
+              {isSavingInstructions ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              Save Directions
             </button>
-            <div className="mr-1">
-              <Logo size={45} showText={false} />
+          )}
+          {!isLocked && (
+            <button onClick={() => setIngestionMode(ingestionMode === 'manual' ? 'bulk' : 'manual')} className="px-4 py-2 bg-white hover:bg-slate-50 text-[#7C3AED] text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-sm font-mono cursor-pointer active:scale-[0.97]">
+              {ingestionMode === 'manual' ? 'Switch to Bulk Import' : 'Switch to Manual Form'}
+            </button>
+          )}
+          {isLocked && (
+            <div className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-50 border border-amber-200 text-amber-800 font-mono font-black text-[10px] uppercase rounded-xl shadow-2xs">
+              <Lock className="w-3.5 h-3.5 text-[#C62927]" /> View-Only Mode Active
             </div>
-            <div className="min-w-0 text-left">
-              <h2 className="text-xs font-black uppercase tracking-wider text-slate-950">Question Setup Terminal</h2>
-              <p className="text-[10px] font-bold text-[#9A87A9] font-mono uppercase tracking-wider mt-0.5 truncate">
-                {subjectInfo || 'Startrite Core Module'} • Status: <span className={resolvedStatus === 'rejected' ? 'text-[#C62927] font-black animate-pulse' : isLocked ? 'text-indigo-600 font-black' : 'text-emerald-600 font-black'}>{assessmentStatus.toUpperCase()}</span>
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-2 shrink-0">
-            {/* 🎯 NEW: LIVE DIRECTIONS SYNC BUTTON CHASSIS */}
-            {ingestionMode === 'manual' && !isLocked && (
-              <button 
-                onClick={handleUpdateSectionInstructions}
-                disabled={isSavingInstructions}
-                className="px-4 py-2 border-2 border-indigo-200 hover:border-[#2A1A63] text-[#2A1A63] text-xs font-bold uppercase tracking-wider rounded-lg flex items-center gap-1.5 font-mono cursor-pointer transition-all"
-              >
-                {isSavingInstructions ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                Save Directions
-              </button>
-            )}
-            {!isLocked && (
-              <button onClick={() => setIngestionMode(ingestionMode === 'manual' ? 'bulk' : 'manual')} className="px-4 py-2 bg-[#2A1A63] hover:opacity-90 text-white text-xs font-bold uppercase tracking-wider rounded-lg transition-all shadow-md font-mono cursor-pointer">
-                {ingestionMode === 'manual' ? 'Switch to Bulk Import' : 'Switch to Manual Form'}
-              </button>
-            )}
-            {isLocked && (
-              <div className="flex items-center gap-1 px-3 py-2 bg-amber-50 border border-amber-200 text-amber-800 font-mono font-black text-[10px] uppercase rounded-lg shadow-3xs">
-                <Lock className="w-3.5 h-3.5 text-[#C62927]" /> View-Only Mode Active
-              </div>
-            )}
-          </div>
+          )}
         </div>
       </header>
 
       {resolvedStatus === 'rejected' && feedbackComment && (
-        <div className="w-full bg-rose-50 border-b border-rose-200 py-3.5 px-4 md:px-6 shadow-inner text-left shrink-0">
+        <div className="w-full bg-rose-50 border-b border-rose-200 py-3.5 px-6 shadow-inner text-left shrink-0">
           <div className="max-w-7xl mx-auto flex items-start gap-3">
-            <div className="w-8 h-8 bg-white border border-rose-200 rounded-lg flex items-center justify-center text-[#C62927] shrink-0 shadow-3xs">
+            <div className="w-8 h-8 bg-white border border-rose-200 rounded-xl flex items-center justify-center text-[#C62927] shrink-0 shadow-2xs">
               <MessageSquare className="w-4 h-4" />
             </div>
             <div>
@@ -552,69 +549,69 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
       )}
 
       {/* SCORE MONITOR */}
-      <div className="w-full max-w-7xl mx-auto px-4 mt-4 grid grid-cols-2 gap-4 shrink-0 text-left">
-        <div className="bg-white border border-[#9A87A9]/20 p-3 rounded-xl shadow-3xs flex justify-between items-center font-mono">
-          <span className="text-[10px] font-black text-[#9A87A9] uppercase">Part A (Obj) Total Score:</span>
-          <span className="text-xs font-black text-slate-950 bg-[#FAF9FA] border border-[#9A87A9]/20 px-2.5 py-0.5 rounded-md">{totalObjectivePoints} Marks</span>
+      <div className="w-full max-w-7xl mx-auto px-8 mt-6 grid grid-cols-2 gap-5 shrink-0 text-left">
+        <div className="bg-[#F3EEFC] border border-[#E2D5F8] p-4 rounded-2xl shadow-2xs flex justify-between items-center font-mono">
+          <span className="text-[10px] font-black text-[#7C6B93] uppercase">Part A (Obj) Total Score:</span>
+          <span className="text-xs font-black text-slate-900 bg-white border border-[#E2D5F8] px-3 py-1 rounded-xl shadow-2xs">{totalObjectivePoints} Marks</span>
         </div>
-        <div className="bg-white border border-[#9A87A9]/20 p-3 rounded-xl shadow-3xs flex justify-between items-center font-mono">
-          <span className="text-[10px] font-black text-[#9A87A9] uppercase">Part B (Theory) Total Score:</span>
-          <span className="text-xs font-black text-slate-950 bg-[#FAF9FA] border border-[#9A87A9]/20 px-2.5 py-0.5 rounded-md">{totalTheoryPoints} Marks</span>
+        <div className="bg-[#F3EEFC] border border-[#E2D5F8] p-4 rounded-2xl shadow-2xs flex justify-between items-center font-mono">
+          <span className="text-[10px] font-black text-[#7C6B93] uppercase">Part B (Theory) Total Score:</span>
+          <span className="text-xs font-black text-slate-900 bg-white border border-[#E2D5F8] px-3 py-1 rounded-xl shadow-2xs">{totalTheoryPoints} Marks</span>
         </div>
       </div>
 
       {ingestionMode === 'manual' && (
-        <div className="w-full max-w-7xl mx-auto px-4 py-2 mt-2 flex gap-2 shrink-0">
-          <button onClick={() => { setActiveSectionTab('objective'); initializeEmptyFormState(); }} className={`px-4 py-2 text-xs font-black uppercase rounded-lg tracking-wider cursor-pointer font-mono transition-all duration-150 ${activeSectionTab === 'objective' ? 'bg-[#2A1A63] text-white shadow-sm border-[#2A1A63]' : 'bg-white border border-[#9A87A9]/30 text-[#9A87A9] hover:bg-slate-50'}`}>Section A: Objectives</button>
-          <button onClick={() => { setActiveSectionTab('theory'); initializeEmptyFormState(); }} className={`px-4 py-2 text-xs font-black uppercase rounded-lg tracking-wider cursor-pointer font-mono transition-all duration-150 ${activeSectionTab === 'theory' ? 'bg-[#2A1A63] text-white shadow-sm border-[#2A1A63]' : 'bg-white border border-[#9A87A9]/30 text-[#9A87A9] hover:bg-slate-50'}`}>Section B: Theory</button>
+        <div className="w-full max-w-7xl mx-auto px-8 py-3 mt-2 flex gap-3 shrink-0">
+          <button onClick={() => { setActiveSectionTab('objective'); initializeEmptyFormState(); }} className={`px-4 py-2.5 text-xs font-black uppercase rounded-xl tracking-wider cursor-pointer font-mono transition-all duration-150 shadow-2xs ${activeSectionTab === 'objective' ? 'bg-[#7C3AED] text-white shadow-xs border-[#7C3AED]' : 'bg-white border border-[#E2D5F8] text-[#7C6B93] hover:bg-slate-50'}`}>Section A: Objectives</button>
+          <button onClick={() => { setActiveSectionTab('theory'); initializeEmptyFormState(); }} className={`px-4 py-2.5 text-xs font-black uppercase rounded-xl tracking-wider cursor-pointer font-mono transition-all duration-150 shadow-2xs ${activeSectionTab === 'theory' ? 'bg-[#7C3AED] text-white shadow-xs border-[#7C3AED]' : 'bg-white border border-[#E2D5F8] text-[#7C6B93] hover:bg-slate-50'}`}>Section B: Theory</button>
         </div>
       )}
 
       {isLoading ? (
-        <main className="flex-1 flex items-center justify-center bg-[#FAF9FA] w-full py-24">
-          <div className="text-xs font-mono text-[#9A87A9] font-black uppercase tracking-widest flex items-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin text-[#2A1A63]" />
+        <main className="flex-1 flex items-center justify-center bg-[#F7F5FC] w-full py-24">
+          <div className="text-xs font-mono text-[#7C6B93] font-black uppercase tracking-widest flex items-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin text-[#7C3AED]" />
             Synchronizing assessment files from backend matrix...
           </div>
         </main>
       ) : (
-        <div className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 flex flex-col justify-start">
+        <div className="flex-1 max-w-7xl w-full mx-auto px-8 py-6 flex flex-col justify-start">
           
           {ingestionMode === 'bulk' && !isLocked ? (
             <div className="w-full grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
               <div className="space-y-4 flex flex-col">
-                <div className="bg-white border border-[#9A87A9]/30 rounded-xl p-5 shadow-3xs space-y-3 text-left">
-                  <div className="flex items-center gap-2 pb-2 border-b border-[#FAF9FA]">
-                    <FileText className="w-4 h-4 text-indigo-600" />
-                    <h4 className="text-xs font-black uppercase tracking-wide text-slate-950">Document File Import Guides</h4>
+                <div className="bg-[#F3EEFC] border border-[#E2D5F8] rounded-3xl p-6 shadow-xs space-y-3 text-left">
+                  <div className="flex items-center gap-2 pb-3 border-b border-[#E2D5F8]/60">
+                    <FileText className="w-4 h-4 text-[#7C3AED]" />
+                    <h4 className="text-xs font-black uppercase tracking-wide text-slate-900">Document File Import Guides</h4>
                   </div>
-                  <p className="text-[11px] text-slate-500 leading-relaxed font-sans bg-[#FAF9FA] p-3 border border-[#9A87A9]/20 rounded-lg">
+                  <p className="text-[11px] text-slate-600 leading-relaxed font-sans bg-white p-3.5 border border-[#E2D5F8] rounded-2xl shadow-2xs">
                     <strong className="font-mono block uppercase text-[#2A1A63] text-[10px] mb-1">Spreadsheet (.CSV) Format:</strong>
                     Format your sheet with columns: Type, Question_Text, Points_Weight, Options (split options using |), Correct_Option_Index, Image_Handle.<br/><br/>
-                    <strong className="font-mono block uppercase text-indigo-600 text-[10px] mb-1">Word Document (.DOCX) Format:</strong>
+                    <strong className="font-mono block uppercase text-[#7C3AED] text-[10px] mb-1">Word Document (.DOCX) Format:</strong>
                     Write questions natively using numbers like 1., 2., options as A), B), C), D) and keywords like Answer: B or Rubric: text guidelines. Add image pointers by typing "Image: cell.png" below the question context. Word native equations automatically populate!
                   </p>
                 </div>
 
-                <div className="bg-white border border-[#9A87A9]/30 rounded-xl p-5 shadow-3xs flex-1 flex flex-col justify-between min-h-[260px] text-left">
+                <div className="bg-[#F3EEFC] border border-[#E2D5F8] rounded-3xl p-6 shadow-xs flex-1 flex flex-col justify-between min-h-[260px] text-left">
                   <div className="space-y-3">
-                    <div className="flex items-center gap-2 pb-2 border-b border-[#FAF9FA]">
-                      <ImageIcon className="w-4 h-4 text-[#2A1A63]" />
-                      <h4 className="text-xs font-black uppercase tracking-wide text-slate-950">Reference Media Bin ({bulkImages.length})</h4>
+                    <div className="flex items-center gap-2 pb-3 border-b border-[#E2D5F8]/60">
+                      <ImageIcon className="w-4 h-4 text-[#7C3AED]" />
+                      <h4 className="text-xs font-black uppercase tracking-wide text-slate-900">Reference Media Bin ({bulkImages.length})</h4>
                     </div>
                     
-                    <div className="p-4 border border-dashed border-[#9A87A9]/40 rounded-xl bg-[#FAF9FA]/50 text-center relative flex flex-col items-center justify-center gap-1.5 cursor-pointer hover:bg-slate-50">
-                      <Upload className="w-5 h-5 text-[#9A87A9]" />
-                      <span className="text-[10px] font-black text-[#9A87A9] uppercase font-mono">Upload Attachments Bundle</span>
+                    <div className="p-5 border border-dashed border-[#E2D5F8] rounded-2xl bg-white text-center relative flex flex-col items-center justify-center gap-1.5 cursor-pointer hover:border-[#7C3AED] shadow-2xs transition-all">
+                      <Upload className="w-5 h-5 text-[#7C3AED]" />
+                      <span className="text-[10px] font-black text-[#7C6B93] uppercase font-mono">Upload Attachments Bundle</span>
                       <input type="file" multiple accept="image/*" onChange={handleBulkImagesChange} className="absolute inset-0 opacity-0 cursor-pointer" />
                     </div>
 
                     <div className="grid grid-cols-3 gap-2 overflow-y-auto max-h-[160px] pt-1">
                       {bulkImages.map((img, idx) => (
-                        <div key={idx} className="relative border border-[#9A87A9]/20 rounded-lg p-1 bg-white text-center flex flex-col justify-between items-center h-16 shadow-3xs">
+                        <div key={idx} className="relative border border-[#E2D5F8] rounded-xl p-1.5 bg-white text-center flex flex-col justify-between items-center h-16 shadow-2xs">
                           <img src={URL.createObjectURL(img)} alt="attached-thumbnail" className="w-full h-8 object-contain rounded" />
                           <span className="text-[7px] font-mono font-black truncate w-full uppercase mt-1 block text-slate-500">{img.name}</span>
-                          <button onClick={() => removeBulkImage(idx)} className="absolute -top-1 -right-1 p-0.5 bg-[#C62927] text-white rounded-full hover:opacity-90 shadow-sm cursor-pointer"><X className="w-2.5 h-2.5" /></button>
+                          <button onClick={() => removeBulkImage(idx)} className="absolute -top-1 -right-1 p-0.5 bg-[#C62927] text-white rounded-full hover:opacity-90 shadow-xs cursor-pointer"><X className="w-2.5 h-2.5" /></button>
                         </div>
                       ))}
                     </div>
@@ -622,11 +619,11 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
 
                   {bulkFile && (
                     <div className="flex gap-2 mt-4 w-full">
-                      <button onClick={handleCancelBulkUploadDeck} className="px-3 border border-[#9A87A9]/30 hover:bg-slate-50 rounded-lg flex items-center justify-center text-[#9A87A9] cursor-pointer"><RotateCcw className="w-4 h-4" /></button>
+                      <button onClick={handleCancelBulkUploadDeck} className="px-3 border border-[#E2D5F8] bg-white hover:bg-slate-50 rounded-xl flex items-center justify-center text-[#7C6B93] cursor-pointer shadow-2xs"><RotateCcw className="w-4 h-4" /></button>
                       <button 
                         onClick={() => setModalType('bulk_submit')}
                         disabled={isUploadingBulk}
-                        className="flex-1 py-3 bg-[#2A1A63] text-white font-black text-xs uppercase tracking-wider rounded-lg shadow-md flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50 font-mono"
+                        className="flex-1 py-3 bg-[#22C55E] hover:bg-[#16A34A] text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-md flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50 font-mono transition-all"
                       >
                         Save Import Document
                       </button>
@@ -637,52 +634,52 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
 
               {/* PREVIEW CONTAINER */}
               <div className="lg:col-span-2 flex flex-col gap-4">
-                <div className="bg-white border border-[#9A87A9]/30 rounded-xl p-5 shadow-3xs text-center flex flex-col items-center justify-center h-40 relative hover:border-[#9A87A9]/60 transition-colors">
+                <div className="bg-[#F3EEFC] border border-[#E2D5F8] rounded-3xl p-6 shadow-xs text-center flex flex-col items-center justify-center h-44 relative hover:border-[#7C3AED] transition-colors">
                   {bulkFileType === 'docx' ? (
-                    <FileText className="w-8 h-8 text-indigo-600 mb-2" />
+                    <FileText className="w-8 h-8 text-[#7C3AED] mb-2" />
                   ) : (
                     <FileSpreadsheet className="w-8 h-8 text-emerald-600 mb-2" />
                   )}
                   <input type="file" accept=".csv, .docx" onChange={handleBulkFileChange} className="absolute inset-0 opacity-0 cursor-pointer" />
-                  <span className="text-xs font-black text-slate-700 uppercase font-mono">
+                  <span className="text-xs font-black text-slate-900 uppercase font-mono">
                     {bulkFile ? `Staged File: ${bulkFile.name} (${bulkFileType.toUpperCase()})` : 'Click or drag your structured question sheets (.csv or .docx)'}
                   </span>
-                  <p className="text-[10px] text-[#9A87A9] uppercase font-mono mt-1">Maximum allowed size per single partition allocation: 24MB</p>
+                  <p className="text-[10px] text-[#7C6B93] uppercase font-mono mt-1">Maximum allowed size per single partition allocation: 24MB</p>
                 </div>
 
-                <div className="bg-[#FAF9FA] border border-[#9A87A9]/30 rounded-xl p-4 flex-1 h-[380px] overflow-y-auto shadow-inner text-left">
-                  <span className="text-[10px] font-mono font-black text-[#9A87A9] uppercase tracking-wider block mb-3">Live Document Pre-Submission Preview Sheet</span>
+                <div className="bg-[#F3EEFC] border border-[#E2D5F8] rounded-3xl p-6 flex-1 h-[380px] overflow-y-auto shadow-xs text-left">
+                  <span className="text-[10px] font-mono font-black text-[#7C3AED] uppercase tracking-wider block mb-3">Live Document Pre-Submission Preview Sheet</span>
                   
                   <div className="space-y-3">
                     {stagedPreviewQuestions.length === 0 ? (
-                      <div className="p-12 border border-dashed border-[#9A87A9]/30 rounded-xl text-center text-xs font-mono text-[#9A87A9] font-bold uppercase bg-white py-24">Staging workspace empty. Attach a document above to read rows.</div>
+                      <div className="p-12 border border-dashed border-[#E2D5F8] rounded-2xl text-center text-xs font-mono text-[#7C6B93] font-bold uppercase bg-white py-24 shadow-2xs">Staging workspace empty. Attach a document above to read rows.</div>
                     ) : (
                       stagedPreviewQuestions.map((q, idx) => {
                         const matchingMediaFile = q.imageHandle ? bulkImages.find(img => img.name === q.imageHandle) : null;
                         
                         return (
-                          <div key={idx} className="p-4 bg-white border border-[#9A87A9]/20 rounded-xl shadow-3xs text-left">
-                            <div className="flex justify-between items-center border-b border-[#FAF9FA] pb-1.5 mb-2 font-mono text-[9px] font-black text-[#9A87A9] uppercase">
+                          <div key={idx} className="p-4 bg-white border border-[#E2D5F8] rounded-2xl shadow-2xs text-left">
+                            <div className="flex justify-between items-center border-b border-[#E2D5F8]/60 pb-1.5 mb-2 font-mono text-[9px] font-black text-[#7C6B93] uppercase">
                               <span>Extracted Row {idx + 1} — {q.type}</span>
-                              <span className="text-slate-950 bg-white border px-1.5 py-0.5 rounded-md font-black">{q.score} Marks Weight</span>
+                              <span className="text-slate-900 bg-[#FAF9FA] border border-[#E2D5F8] px-2 py-0.5 rounded-lg font-black pr-12">{q.score} Marks Weight</span>
                             </div>
                             <div className="text-xs font-bold text-slate-900 leading-relaxed">
                               <SafeMathText text={q.text} />
                             </div>
                             
                             {q.imageHandle && (
-                              <div className="mt-2.5 mb-1 p-2 bg-[#FAF9FA] border border-[#9A87A9]/10 rounded-xl max-w-md flex items-center gap-3">
-                                <div className="w-14 h-14 bg-white border rounded-lg flex items-center justify-center overflow-hidden shrink-0 shadow-3xs">
+                              <div className="mt-2.5 mb-1 p-2.5 bg-[#FAF9FA] border border-[#E2D5F8] rounded-xl max-w-md flex items-center gap-3">
+                                <div className="w-14 h-14 bg-white border border-[#E2D5F8] rounded-xl flex items-center justify-center overflow-hidden shrink-0 shadow-2xs">
                                   {matchingMediaFile ? (
                                     <img src={URL.createObjectURL(matchingMediaFile)} alt="staging-preview" className="w-full h-full object-cover" />
                                   ) : (
-                                    <ImageIcon className="w-5 h-5 text-[#9A87A9] animate-pulse" />
+                                    <ImageIcon className="w-5 h-5 text-[#7C6B93] animate-pulse" />
                                   )}
                                 </div>
                                 <div className="font-mono text-[9px] min-w-0 flex-1">
-                                  <span className="font-black text-slate-950 block uppercase">Requires Attachment Image:</span>
-                                  <span className="text-slate-500 block truncate font-bold">{q.imageHandle}</span>
-                                  <span className={`inline-block font-sans px-1.5 py-0.5 rounded text-[8px] uppercase font-black mt-1 border ${matchingMediaFile ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-[#C62927] border-rose-100'}`}>
+                                  <span className="font-black text-slate-900 block uppercase">Requires Attachment Image:</span>
+                                  <span className="text-slate-600 block truncate font-bold">{q.imageHandle}</span>
+                                  <span className={`inline-block font-sans px-2 py-0.5 rounded-lg text-[8px] uppercase font-black mt-1 border ${matchingMediaFile ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-[#C62927] border-rose-200'}`}>
                                     {matchingMediaFile ? '✓ Match Verified' : '⚠ Missing from media pool (Upload to link)'}
                                   </span>
                                 </div>
@@ -690,10 +687,10 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
                             )}
 
                             {q.type === 'Objective' && q.options && q.options.length > 0 && (
-                              <div className="mt-2 grid grid-cols-1 gap-1 pl-2 font-mono text-[10px] text-slate-500 font-bold">
+                              <div className="mt-3 grid grid-cols-1 gap-1 pl-2 font-mono text-[10px] text-slate-600 font-bold">
                                 {q.options.map((opt, oIdx) => (
-                                  <div key={oIdx} className="flex items-center gap-1">
-                                    <span className="w-1 h-1 rounded-full bg-slate-300" />
+                                  <div key={oIdx} className="flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-[#7C3AED]" />
                                     <span><SafeMathText text={opt.text} /></span>
                                   </div>
                                 ))}
@@ -717,75 +714,75 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
                     <ManualForm activeSectionTab={activeSectionTab} questionScore={questionScore} setQuestionScore={setQuestionScore} manualImageFile={manualImageFile} onImageDrop={handleManualImageDrop} questionText={questionText} setQuestionText={setQuestionText} options={options} setOptions={setOptions} theoryRubric={theoryRubric} setTheoryRubric={setTheoryRubric} onAddOption={() => setOptions([...options, { text: 'New Option', isCorrect: false }])} onRemoveOption={(idx) => setOptions(options.filter((_, i) => i !== idx))} onCommitChanges={() => setModalType('manual_commit')} />
                     
                     {manualImagePreview && (
-                      <div className="absolute top-[310px] right-4 bg-white border border-[#9A87A9]/30 p-2 rounded-xl flex items-center gap-2 max-w-[190px] shadow-md z-50 text-left">
-                        <img src={manualImagePreview} className="w-8 h-8 object-contain bg-[#FAF9FA] border rounded shadow-3xs" alt="thumb" />
-                        <span className="text-[8px] font-mono text-[#9A87A9] uppercase font-black truncate block flex-1">Image Attached</span>
-                        <button onClick={handleCancelManualImage} className="p-1 bg-[#FAF9FA] hover:bg-rose-100 text-[#9A87A9] hover:text-[#C62927] rounded-full cursor-pointer"><X className="w-3 h-3" /></button>
+                      <div className="absolute top-[310px] right-4 bg-white border border-[#E2D5F8] p-2.5 rounded-2xl flex items-center gap-2.5 max-w-[190px] shadow-md z-50 text-left">
+                        <img src={manualImagePreview} className="w-9 h-9 object-contain bg-[#FAF9FA] border border-[#E2D5F8] rounded-xl shadow-2xs" alt="thumb" />
+                        <span className="text-[9px] font-mono text-[#7C6B93] uppercase font-black truncate block flex-1">Image Attached</span>
+                        <button onClick={handleCancelManualImage} className="p-1 bg-[#FAF9FA] hover:bg-rose-100 text-[#7C6B93] hover:text-[#C62927] rounded-full cursor-pointer"><X className="w-3.5 h-3.5" /></button>
                       </div>
                     )}
                   </div>
                 )}
                 
                 <div className={isLocked ? "w-full" : "md:col-span-3"}>
-                  <section className="bg-[#FAF9FA] border border-[#9A87A9]/30 rounded-xl p-5 h-[530px] overflow-y-auto shadow-inner w-full">
+                  <section className="bg-[#F3EEFC] border border-[#E2D5F8] rounded-3xl p-6 h-[560px] overflow-y-auto shadow-xs w-full text-left">
                     <div className="w-full space-y-4">
                       
                       {/* 🎯 FIXED: DYNAMIC EDITABLE INSTRUCTIONS BLOCK CONTAINER */}
-                      <div className="bg-white border border-[#9A87A9]/20 p-4 rounded-xl shadow-3xs text-left">
-                        <div className="bg-[#FAF9FA] border border-[#9A87A9]/10 p-3 rounded-lg text-[10px] font-bold text-slate-700 mb-0.5 uppercase font-mono leading-relaxed">
-                          <span className="font-black text-slate-950 block mb-1">✍️ Edit Section Instructions (Live Sync):</span>
+                      <div className="bg-white border border-[#E2D5F8] p-4 rounded-2xl shadow-2xl text-left">
+                        <div className="bg-[#FAF9FA] border border-[#E2D5F8] p-3 rounded-xl text-[10px] font-bold text-slate-700 mb-0.5 uppercase font-mono leading-relaxed">
+                          <span className="font-black text-slate-900 block mb-1">✍️ Edit Section Instructions (Live Sync):</span>
                           {activeSectionTab === 'objective' ? (
                             <textarea
                               value={objInstructions}
                               onChange={(e) => setObjInstructions(e.target.value)}
                               disabled={isLocked}
-                              className="w-full h-16 p-2 bg-white border border-[#9A87A9]/30 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#2A1A63] text-xs font-sans tracking-tight text-slate-950 resize-none normal-case"
+                              className="w-full h-16 p-2.5 bg-white border border-[#E2D5F8] rounded-xl focus:outline-none focus:border-[#7C3AED] text-xs font-sans tracking-tight text-slate-900 resize-none normal-case shadow-2xs"
                             />
                           ) : (
                             <textarea
                               value={theoryInstructions}
                               onChange={(e) => setTheoryInstructions(e.target.value)}
                               disabled={isLocked}
-                              className="w-full h-16 p-2 bg-white border border-[#9A87A9]/30 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#2A1A63] text-xs font-sans tracking-tight text-slate-950 resize-none normal-case"
+                              className="w-full h-16 p-2.5 bg-white border border-[#E2D5F8] rounded-xl focus:outline-none focus:border-[#7C3AED] text-xs font-sans tracking-tight text-slate-900 resize-none normal-case shadow-2xs"
                             />
                           )}
                         </div>
                       </div>
 
                       <div className="flex justify-between items-center px-1">
-                        <p className="text-[10px] font-black text-[#9A87A9] font-mono uppercase tracking-wider">Draft Question Sheet Portfolio Scroll</p>
+                        <p className="text-[10px] font-black text-[#7C6B93] font-mono uppercase tracking-wider">Draft Question Sheet Portfolio Scroll</p>
                         {activeQuestionId && !String(activeQuestionId).startsWith('temp_') && !isLocked && (
-                          <button onClick={initializeEmptyFormState} className="text-[9px] bg-white border border-[#9A87A9]/30 hover:border-[#2A1A63] font-mono font-black text-slate-700 uppercase px-2 py-0.5 rounded-md shadow-3xs">Reset Entry Fields</button>
+                          <button onClick={initializeEmptyFormState} className="text-[9px] bg-white border border-[#E2D5F8] hover:border-[#7C3AED] font-mono font-black text-slate-700 uppercase px-2.5 py-1 rounded-xl shadow-2xs cursor-pointer">Reset Entry Fields</button>
                         )}
                       </div>
                       
-                      <div className="space-y-2.5 w-full text-left">
+                      <div className="space-y-3 w-full text-left">
                         {filteredBankList.length === 0 ? (
-                          <div className="p-8 text-center text-xs font-mono text-[#9A87A9] font-bold uppercase bg-white border border-dashed border-[#9A87A9]/30 rounded-xl py-12">No test entries compiled within this section blueprint folder yet.</div>
+                          <div className="p-8 text-center text-xs font-mono text-[#7C6B93] font-bold uppercase bg-white border border-dashed border-[#E2D5F8] rounded-2xl py-16 shadow-2xs">No test entries compiled within this section blueprint folder yet.</div>
                         ) : (
                           filteredBankList.map((q, idx) => (
-                            <div key={q.id || idx} className={`p-4 bg-white border rounded-xl shadow-3xs transition-all relative group/row text-left ${q.id === activeQuestionId ? 'border-[#2A1A63] ring-1 ring-[#2A1A63]/10 bg-[#FAF9FA]/40' : 'border-[#9A87A9]/20'}`}>
+                            <div key={q.id || idx} className={`p-4 bg-white border rounded-2xl shadow-2xl transition-all relative group/row text-left ${q.id === activeQuestionId ? 'border-[#7C3AED] ring-1 ring-[#7C3AED]/30 bg-[#FAF9FA]/40' : 'border-[#E2D5F8]'}`}>
                               
                               {!isLocked && (
                                 <button 
                                   onClick={() => loadQuestionIntoEditor(q)}
-                                  className="absolute top-3 right-3 p-1.5 border border-[#9A87A9]/30 bg-white hover:border-[#2A1A63] text-[#9A87A9] hover:text-[#2A1A63] rounded-lg opacity-0 group-hover/row:opacity-100 transition-all cursor-pointer shadow-3xs flex items-center gap-1 text-[9px] font-mono font-black uppercase"
+                                  className="absolute top-3 right-3 p-1.5 border border-[#E2D5F8] bg-white hover:border-[#7C3AED] text-[#7C6B93] hover:text-[#7C3AED] rounded-xl opacity-0 group-hover/row:opacity-100 transition-all cursor-pointer shadow-2xs flex items-center gap-1 text-[9px] font-mono font-black uppercase"
                                 >
                                   <Edit3 className="w-3 h-3" /> Edit Card
                                 </button>
                               )}
 
-                              <div className="flex justify-between items-center border-b border-[#FAF9FA] pb-1.5 mb-2 font-mono text-[9px] font-black text-[#9A87A9] uppercase">
+                              <div className="flex justify-between items-center border-b border-[#E2D5F8]/60 pb-1.5 mb-2 font-mono text-[9px] font-black text-[#7C6B93] uppercase">
                                 <span>Question Paper Slot {idx + 1}</span>
-                                <span className="bg-[#FAF9FA] px-1.5 py-0.5 rounded border border-[#9A87A9]/10 text-slate-950 font-black pr-12">{q.score} Marks Weight</span>
+                                <span className="bg-[#FAF9FA] px-2 py-0.5 rounded-lg border border-[#E2D5F8] text-slate-900 font-black pr-12">{q.score} Marks Weight</span>
                               </div>
                               
-                              <div className="text-xs font-bold text-slate-950 leading-relaxed font-sans">
+                              <div className="text-xs font-bold text-slate-900 leading-relaxed font-sans">
                                 <SafeMathText text={q.text} />
                               </div>
                               
                               {q.imageUrl && (
-                                <div className="mt-3 mb-2 border border-[#9A87A9]/20 rounded-xl overflow-hidden bg-[#FAF9FA] max-w-sm h-48 flex items-center justify-center shadow-3xs">
+                                <div className="mt-3 mb-2 border border-[#E2D5F8] rounded-2xl overflow-hidden bg-[#FAF9FA] max-w-sm h-48 flex items-center justify-center shadow-2xs">
                                   <img 
                                     src={String(q.imageUrl).startsWith('blob:') ? q.imageUrl : `${BASE_URL}/${q.imageUrl.startsWith('/') ? q.imageUrl.slice(1) : q.imageUrl}`} 
                                     alt="Context Attachment" 
@@ -796,11 +793,11 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
                               )}
 
                               {q.type === 'objective' && q.options && (
-                                <div className="mt-3 grid grid-cols-1 gap-1.5 pl-2 font-mono">
+                                <div className="mt-3 grid grid-cols-1 gap-2 pl-2 font-mono">
                                   {q.options.map((opt, oIdx) => (
-                                    <div key={oIdx} className="text-[11px] text-slate-600 font-bold flex items-center gap-2">
-                                      <span className={`w-1.5 h-1.5 rounded-full ${opt.isCorrect ? 'bg-emerald-500' : 'bg-slate-200'}`} />
-                                      <span className={opt.isCorrect ? 'text-emerald-700 font-black' : ' text-slate-500'}>
+                                    <div key={oIdx} className="text-[11px] text-slate-700 font-bold flex items-center gap-2">
+                                      <span className={`w-2 h-2 rounded-full ${opt.isCorrect ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                                      <span className={opt.isCorrect ? 'text-emerald-700 font-black' : 'text-slate-600'}>
                                         {String.fromCharCode(65 + oIdx)}) <SafeMathText text={opt.text} />
                                       </span>
                                     </div>
@@ -809,8 +806,8 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
                               )}
                               
                               {q.type === 'theory' && q.rubric && (
-                                <div className="mt-3 p-3 bg-[#2A1A63] rounded-xl text-white font-mono text-[11px] leading-relaxed shadow-3xs border">
-                                  <span className="text-[9px] text-[#9A87A9] font-black block uppercase tracking-wide mb-0.5">💡 Grading Key Rubric:</span>
+                                <div className="mt-3 p-3.5 bg-[#7C3AED] rounded-2xl text-white font-mono text-[11px] leading-relaxed shadow-2xs border border-[#8B5CF6]">
+                                  <span className="text-[9px] text-white/80 font-black block uppercase tracking-wide mb-0.5">💡 Grading Key Rubric:</span>
                                   <SafeMathText text={q.rubric} />
                                 </div>
                               )}
@@ -837,6 +834,11 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
         onCancel={() => { setModalType(null); setDeleteTargetId(null); }}
         summaryData={modalType === 'bulk_submit' ? { "Source File": bulkFile?.name, "Staged Extracted Count": `${stagedPreviewQuestions.length} Rows Map` } : { "Category": activeSectionTab }}
       />
+
+      <footer className="w-full border-t border-[#7C6B93]/20 bg-white py-2.5 text-center text-[10px] font-black text-[#7C6B93] tracking-wider font-mono uppercase shrink-0 px-4">
+        Start-rite intrnet institutional security matrix
+      </footer>
+
     </div>
   );
 }

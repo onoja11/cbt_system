@@ -3,7 +3,6 @@ import {
   Shield, 
   FileText, 
   Activity, 
-  Folder, 
   CheckCircle, 
   Monitor, 
   ChevronRight, 
@@ -18,20 +17,22 @@ import {
   BookOpen,
   DoorOpen,
   Calendar,
-  Tags
+  Tags,
+  VideoOff,
+  Folder
 } from 'lucide-react';
 import { apiRequest } from '../../core/api';
 import Logo from '../../shared/Logo';
 
 export default function AdminDashboard({ 
   onNavigateToApproval, 
-  onNavigateToClasses, 
   onNavigateToArchive, 
-  onNavigateToLiveSurveillance, 
   onNavigateToScheduler, 
+  onNavigateToUsers, 
+  onNavigateToClasses, 
+  onNavigateToLiveSurveillance, 
   onLogOut 
 }) {
-  // 🏫 SCHOOL CONTROL MATRIX MEMORY REGISTERS
   const [schoolStats, setSchoolStats] = useState({
     active_exam_writers: 0,
     total_students: 0,
@@ -44,16 +45,12 @@ export default function AdminDashboard({
   const [isLoading, setIsLoading] = useState(true);
   const [showLogoutDrawer, setShowLogoutDrawer] = useState(false);
 
-  // ─────────────────────────────────────────────────────────────────
-  // EFFECT HOOK: Pull Unified Institutional Telemetry & Live Streams
-  // ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     let isMounted = true;
 
     const ingestSchoolManagementLogs = async (isFirstLoad = false) => {
       if (isFirstLoad) setIsLoading(true);
       try {
-        // 1. Ingest central breakdown statistics
         const statsRes = await apiRequest('api/v1/admin/dashboard/school-metrics', { method: 'GET' });
         if (statsRes.ok) {
           const statsPayload = await statsRes.json();
@@ -62,7 +59,6 @@ export default function AdminDashboard({
           }
         }
 
-        // 2. Ingest active real-time exam rooms channel feed
         const channelsRes = await apiRequest('api/v1/admin/dashboard/surveillance-channels', { method: 'GET' });
         if (channelsRes.ok) {
           const channelsPayload = await channelsRes.json();
@@ -77,10 +73,8 @@ export default function AdminDashboard({
       }
     };
 
-    // Load metrics immediately on lifecycle start
     ingestSchoolManagementLogs(true);
 
-    // Refresh dashboard records dynamically every 8 seconds via background heartbeat
     const telemetryHeartbeatId = setInterval(() => ingestSchoolManagementLogs(false), 8000);
     return () => {
       isMounted = false;
@@ -88,246 +82,292 @@ export default function AdminDashboard({
     };
   }, []);
 
+  const formatCleanDuration = (durationInput) => {
+    if (!durationInput) return '30 Mins';
+    if (typeof durationInput === 'string' && !/^\d+(\.\d+)?$/.test(durationInput)) {
+      return durationInput;
+    }
+    const totalMinutes = Math.round(parseFloat(durationInput));
+    if (isNaN(totalMinutes)) return durationInput;
+
+    if (totalMinutes >= 60) {
+      const hours = Math.floor(totalMinutes / 60);
+      const mins = totalMinutes % 60;
+      return mins > 0 ? `${hours}h ${mins}m` : `${hours} Hour${hours > 1 ? 's' : ''}`;
+    }
+    return `${totalMinutes} Mins`;
+  };
+
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-white flex flex-col justify-center items-center font-mono text-xs uppercase text-[#9A87A9] tracking-widest gap-2">
-        <Loader2 className="w-5 h-5 animate-spin text-[#2A1A63]" />
+      <div className="min-h-screen bg-[#F7F5FC] flex flex-col justify-center items-center font-mono text-xs uppercase text-[#7C6B93] tracking-widest gap-2">
+        <Loader2 className="w-5 h-5 animate-spin text-[#7C3AED]" />
         Synchronizing administrative school logs with live databases...
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#FAF9FA] flex flex-col justify-between select-none font-sans text-[#2A1A63] relative overflow-hidden w-full">
-      
-      {/* MANAGEMENT CONTROL BANNER */}
-      <header className="w-full bg-[#2A1A63] text-white px-4 md:px-6 py-4 sticky top-0 z-50 shadow-md">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 w-full">
-          <div className="flex items-center gap-3 w-full sm:w-auto">
-            <div className="bg-white p-1 rounded-lg shrink-0 shadow-sm">
-              <Logo size={40} showText={false} />
-            </div>
-            <div className="truncate text-left">
-              <h1 className="text-xs font-black uppercase tracking-wider truncate text-white">Start-Rite Admin Portal</h1>
-              <p className="text-[10px] font-bold text-[#9A87A9] uppercase font-mono tracking-tight truncate mt-0.5">Institutional Examination Management System</p>
-            </div>
+    <div className="min-h-screen bg-[#F7F5FC] flex flex-col justify-between select-none font-sans text-[#2A1A63] relative overflow-hidden w-full">
+
+      {/* 🏛️ EXACT REFERENCE GRADIENT HEADER BAR */}
+      <header className="w-full bg-gradient-to-r from-[#7C3AED] via-[#8B5CF6] to-[#A78BFA] px-6 py-4 flex justify-between items-center shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="bg-white p-1.5 rounded-full shadow-xs flex items-center justify-center">
+            <Logo size={32} showText={false} />
           </div>
-          <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto border-t sm:border-t-0 pt-2 sm:pt-0 border-indigo-900">
-            <span className="text-[9px] font-mono font-bold text-emerald-400 bg-emerald-950/50 border border-emerald-900/60 px-2.5 py-0.5 rounded uppercase tracking-wider animate-pulse">● PORTAL ONLINE</span>
-            <button 
-              onClick={() => setShowLogoutDrawer(true)} 
-              className="p-1.5 bg-[#2A1A63] hover:bg-indigo-9ED/50 border border-[#9A87A9]/40 rounded-lg text-rose-400 hover:text-rose-300 cursor-pointer transition-all shrink-0 active:scale-[0.95]"
-              title="Sign Out of Session"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
+          <div className="text-left">
+            <h1 className="text-xs font-black uppercase tracking-wider text-white">START-RITE ADMIN PORTAL</h1>
+            <p className="text-[11px] font-bold text-white uppercase tracking-wider mt-0.5">INSTITUTIONAL EXAMINATION MANAGEMENT SYSTEM</p>
           </div>
+        </div>
+        <div className="flex items-center">
+          <button 
+            onClick={() => setShowLogoutDrawer(true)} 
+            className="w-9 h-9 bg-white/15 hover:bg-white/25 text-white rounded-full flex items-center justify-center transition-all cursor-pointer shadow-xs"
+            title="Sign Out of Session"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       </header>
 
-      {/* MAIN CONTENT EXECUTION GRID */}
-      <main className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-6 space-y-6 flex flex-col justify-start">
-        
-        {/* SCHOOL ROSTER METRIC GRID STATUS CARDS */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 font-mono w-full shrink-0">
+      <main className="flex-1 w-full max-w-7xl mx-auto px-8 py-6 space-y-6 flex flex-col justify-start">
+
+      {/* 📊 EXACT MATCH 5-COLOUR ANALYTICS CARDS FROM REFERENCE IMAGE */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 font-mono w-full shrink-0">
           
-          {/* Card 1: Active Exam Writers */}
-          <div className="p-4 bg-white border border-[#9A87A9]/20 rounded-xl flex items-center gap-3 shadow-3xs w-full col-span-2 sm:col-span-1 lg:col-span-1">
-            <div className="w-9 h-9 bg-rose-50 border border-rose-100 rounded-lg flex items-center justify-center text-[#C62927] shrink-0">
-              <Activity className="w-4 h-4 animate-pulse" />
+          {/* Card 1: Purple (Exam Writers) */}
+          <div className="p-1.5 bg-[#F3EEFC] border border-[#E2D5F8] rounded-2xl flex items-center gap-3.5 shadow-2xs w-full relative overflow-hidden">
+            <div className="w-18 h-18 bg-purple-400/20 border border-[#E2D5F8] rounded-xl flex items-center justify-center text-purple shrink-0 shadow-2xs">
+              <Activity className="w-6 h-6 animate-pulse" />
             </div>
-            <div className="truncate text-left">
-              <span className="text-[9px] font-sans font-bold text-[#9A87A9] uppercase block tracking-wider">Exam Writers</span>
-              <p className="text-xs font-black text-[#C62927] mt-0.5 truncate">{schoolStats.active_exam_writers} Writing Now</p>
+            <div className="truncate text-left z-10">
+              <span className="text-xxl font-black text-slate-900 block tracking-tight">{schoolStats.active_exam_writers}</span>
+              <p className="text-[10px] font-bold text-black tracking-wide mt-0.5 font-sans">Students In Hall</p>
+              <span className="text-[9px] text-[#7C6B93] block mt-0.5">Writing Now!</span>
             </div>
-          </div>
-
-          {/* Card 2: Total Student Population */}
-          <div className="p-4 bg-white border border-[#9A87A9]/20 rounded-xl flex items-center gap-3 shadow-3xs w-full">
-            <div className="w-9 h-9 bg-indigo-50 border border-indigo-100 rounded-lg flex items-center justify-center text-[#2A1A63] shrink-0">
-              <GraduationCap className="w-4 h-4" />
-            </div>
-            <div className="truncate text-left">
-              <span className="text-[9px] font-sans font-bold text-[#9A87A9] uppercase block tracking-wider">Student Enrollment</span>
-              <p className="text-xs font-black text-slate-950 mt-0.5 truncate">{schoolStats.total_students} Registered</p>
+            <div className="absolute right-[-16px] top-0 pointer-events-none opacity-90">
+              <img 
+                src="/folder-character.png" 
+                alt="Folder Character" 
+                className="w-15 h-15 object-contain"
+                onError={(e) => { e.target.style.display = 'none'; }}
+              />
             </div>
           </div>
 
-          {/* Card 3: Academic Instructors Staff */}
-          <div className="p-4 bg-white border border-[#9A87A9]/20 rounded-xl flex items-center gap-3 shadow-3xs w-full">
-            <div className="w-9 h-9 bg-emerald-50 border border-emerald-100 rounded-lg flex items-center justify-center text-emerald-600 shrink-0">
-              <Users className="w-4 h-4" />
+          {/* Card 2: Pink (Students Enrollment) */}
+          <div className="p-1.5 bg-[#FCE7EE] border border-[#F8D3DF] rounded-2xl flex items-center gap-3.5 shadow-2xs w-full">
+            <div className="w-18 h-18 bg-red-400/20 border border-[#F8D3DF] rounded-xl flex items-center justify-center text-[#E11D48] shrink-0 shadow-2xs">
+              <GraduationCap className="w-6 h-6" />
             </div>
             <div className="truncate text-left">
-              <span className="text-[9px] font-sans font-bold text-[#9A87A9] uppercase block tracking-wider">Teaching Staff</span>
-              <p className="text-xs font-black text-slate-950 mt-0.5 truncate">{schoolStats.total_teachers} Active</p>
+              <span className="text-xxl font-black text-slate-900 block tracking-tight">{schoolStats.total_students}</span>
+              <p className="text-[10px] font-bold text-black tracking-wide mt-0.5 font-sans">Students Enrollment</p>
+              <span className="text-[9px] text-slate-500 block mt-0.5">Registered</span>
             </div>
           </div>
 
-          {/* Card 4: Configured Class Arms */}
-          <div className="p-4 bg-white border border-[#9A87A9]/20 rounded-xl flex items-center gap-3 shadow-3xs w-full">
-            <div className="w-9 h-9 bg-blue-50 border border-blue-100 rounded-lg flex items-center justify-center text-blue-600 shrink-0">
-              <DoorOpen className="w-4 h-4" />
+          {/* Card 3: Green (Teaching Staff) */}
+          <div className="p-1.5 bg-[#EBFBF3] border border-[#C6F6D5] rounded-2xl flex items-center gap-3.5 shadow-2xs w-full">
+            <div className="w-18 h-18 bg-green-400/20 border border-[#C6F6D5] rounded-xl flex items-center justify-center text-[#059669] shrink-0 shadow-2xs">
+              <Users className="w-6 h-6" />
             </div>
             <div className="truncate text-left">
-              <span className="text-[9px] font-sans font-bold text-[#9A87A9] uppercase block tracking-wider">Class Branches</span>
-              <p className="text-xs font-black text-slate-950 mt-0.5 truncate">{schoolStats.total_class_arms} Classes</p>
+              <span className="text-xxl font-black text-slate-900 block tracking-tight">{schoolStats.total_teachers}</span>
+              <p className="text-[10px] font-bold text-black tracking-wide mt-0.5 font-sans">Teaching staff</p>
+              <span className="text-[9px] text-slate-500 block font-mono mt-0.5">Active</span>
             </div>
           </div>
 
-          {/* Card 5: Registered Subject Catalogs */}
-          <div className="p-4 bg-white border border-[#9A87A9]/20 rounded-xl flex items-center gap-3 shadow-3xs w-full">
-            <div className="w-9 h-9 bg-amber-50 border border-amber-100 rounded-lg flex items-center justify-center text-amber-600 shrink-0">
-              <BookOpen className="w-4 h-4" />
+          {/* Card 4: Orange (Class Branches) */}
+          <div className="p-1.5 bg-[#FFFBEB] border border-[#FEF3C7] rounded-2xl flex items-center gap-3.5 shadow-2xs w-full">
+            <div className="w-18 h-18 bg-[#FEF3C7] border border-[#FEF3C7] rounded-xl flex items-center justify-center text-[#D97706] shrink-0 shadow-2xs">
+              <DoorOpen className="w-6 h-6" />
             </div>
             <div className="truncate text-left">
-              <span className="text-[9px] font-sans font-bold text-[#9A87A9] uppercase block tracking-wider">Total Subjects</span>
-              <p className="text-xs font-black text-slate-950 mt-0.5 truncate">{schoolStats.total_subjects} Listed</p>
+              <span className="text-xxl font-black text-slate-900 block tracking-tight">{schoolStats.total_class_arms}</span>
+              <p className="text-[10px] font-bold text-black tracking-wide mt-0.5 font-sans">Class Branches</p>
+              <span className="text-[9px] text-slate-500 block font-mono mt-0.5">Classes</span>
+            </div>
+          </div>
+
+          {/* Card 5: Neutral/Taupe (Total Subjects) */}
+          <div className="p-1.5 bg-[#F5EFE6] border border-[#E8DFD1] rounded-2xl flex items-center gap-3.5 shadow-2xs w-full sm:col-span-2 lg:col-span-1">
+            <div className="w-18 h-18 bg-purple-400/20 border border-[#E8DFD1] rounded-xl flex items-center justify-center text-purple-400 shrink-0 shadow-2xs">
+              <BookOpen className="w-6 h-6" />
+            </div>
+            <div className="truncate text-left">
+              <span className="text-xxl font-black text-slate-900 block tracking-tight">{schoolStats.total_subjects}</span>
+              <p className="text-[10px] font-bold text-slate-700 tracking-wide mt-0.5 font-sans">Total subjects</p>
+              <span className="text-[9px] text-slate-500 block font-mono mt-0.5">Listed</span>
             </div>
           </div>
 
         </div>
 
-        {/* NAVIGATION HUB TIERS — RESPONSIVE 4 COLUMNS GRID */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-mono w-full shrink-0">
-          
-          {/* Card 1: School Records Directory */}
-          <div onClick={onNavigateToClasses} className="p-4 bg-white border border-[#9A87A9]/30 hover:border-[#2A1A63] rounded-xl flex items-center justify-between shadow-3xs cursor-pointer group transition-all w-full">
-            <div className="flex items-center gap-3 truncate">
-              <div className="w-9 h-9 bg-[#FAF9FA] border border-[#9A87A9]/20 rounded-lg flex items-center justify-center text-[#9A87A9] group-hover:bg-[#2A1A63] group-hover:text-white transition-all shrink-0">
-                <Folder className="w-4 h-4" />
+       {/* 🧭 NAVIGATION TILES (UNIFORM TEMPLATE) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 font-mono w-full shrink-0">
+
+          {/* 1. Classes & matrix */}
+          <div onClick={onNavigateToClasses} className="py-3 px-4 bg-purple-400/20 border border-[#E2D5F8] hover:border-[#7C3AED] rounded-2xl flex items-center justify-between shadow-2xs cursor-pointer group transition-all w-full">
+            <div className="flex items-center gap-2.5 truncate">
+              <div className="w-8 h-8 bg-[#7C3AED] border border-[#E2D5F8] rounded-xl flex items-center justify-center text-white group-hover:bg-[#7C3AED] group-hover:text-white transition-all shrink-0 shadow-2xs">
+                <Folder className="w-3.5 h-3.5" />
               </div>
-              <div className="truncate text-left">
-                <span className="text-[9px] font-sans font-bold text-[#9A87A9] uppercase block tracking-wider">School Records</span>
-                <p className="text-xs font-black text-slate-950 mt-0.5 truncate">Class Folders</p>
+              <div className="truncate text-left font-sans">
+                <span className="text-[9px] font-black text-[#7C6B93] block tracking-wider font-mono">School records</span>
+                <p className="text-[11px] font-bold text-black-600 mt-0.5 truncate">Classes & matrix</p>
               </div>
             </div>
-            <ChevronRight className="w-3.5 h-3.5 text-[#9A87A9] group-hover:translate-x-0.5 group-hover:text-[#2A1A63] transition-all shrink-0" />
+            <ChevronRight className="w-3.5 h-3.5 text-[#7C6B93] group-hover:translate-x-1 group-hover:text-[#7C3AED] transition-all shrink-0" />
           </div>
 
-          {/* Card 2: Vetting Queue Desk */}
-          <div onClick={onNavigateToApproval} className="p-4 bg-white border border-[#9A87A9]/30 hover:border-amber-500 rounded-xl flex items-center justify-between shadow-3xs cursor-pointer group transition-all w-full">
-            <div className="flex items-center gap-3 truncate">
-              <div className="w-9 h-9 bg-amber-50 border border-amber-100 rounded-lg flex items-center justify-center text-amber-600 group-hover:bg-amber-500 group-hover:text-white transition-all shrink-0">
-                <FileText className="w-4 h-4" />
+          {/* 2. Users & subjects */}
+          <div onClick={onNavigateToUsers} className="py-3 px-4 bg-purple-400/20 border border-[#E2D5F8] hover:border-[#7C3AED] rounded-2xl flex items-center justify-between shadow-2xs cursor-pointer group transition-all w-full">
+            <div className="flex items-center gap-2.5 truncate">
+              <div className="w-8 h-8 bg-[#7C3AED] border border-[#E2D5F8] rounded-xl flex items-center justify-center text-white group-hover:bg-[#7C3AED] group-hover:text-white transition-all shrink-0 shadow-2xs">
+                <Users className="w-3.5 h-3.5" />
               </div>
-              <div className="truncate text-left">
-                <span className="text-[9px] font-sans font-bold text-[#9A87A9] uppercase block tracking-wider">Waiting Approvals</span>
-                <p className="text-xs font-black text-amber-600 mt-0.5 truncate">{schoolStats.pending_vetting_slips} Papers Pending</p>
+              <div className="truncate text-left font-sans">
+                <span className="text-[9px] font-black text-[#7C6B93] block tracking-wider font-mono">Directory</span>
+                <p className="text-[11px] font-bold text-black-600 mt-0.5 truncate">Users & subjects</p>
               </div>
             </div>
-            <ChevronRight className="w-3.5 h-3.5 text-[#9A87A9] group-hover:translate-x-0.5 group-hover:text-amber-500 transition-all shrink-0" />
+            <ChevronRight className="w-3.5 h-3.5 text-[#7C6B93] group-hover:translate-x-1 group-hover:text-[#7C3AED] transition-all shrink-0" />
           </div>
 
-          {/* Card 3: Concluded Archive Vault */}
-          <div onClick={onNavigateToArchive} className="p-4 bg-white border border-[#9A87A9]/30 hover:border-blue-600 rounded-xl flex items-center justify-between shadow-3xs cursor-pointer group transition-all w-full">
-            <div className="flex items-center gap-3 truncate">
-              <div className="w-9 h-9 bg-blue-50 border border-blue-100 rounded-lg flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-all shrink-0">
-                <CheckCircle className="w-4 h-4" />
+          {/* 3. Papers (Waiting Approvals) */}
+          <div onClick={onNavigateToApproval} className="py-3 px-4 bg-purple-400/20 border border-[#E2D5F8] hover:border-[#7C3AED] rounded-2xl flex items-center justify-between shadow-2xs cursor-pointer group transition-all w-full">
+            <div className="flex items-center gap-2.5 truncate">
+              <div className="w-8 h-8 bg-[#7C3AED] border border-[#E2D5F8] rounded-xl flex items-center justify-center text-white group-hover:bg-[#7C3AED] group-hover:text-white transition-all shrink-0 shadow-2xs">
+                <FileText className="w-3.5 h-3.5" />
               </div>
-              <div className="truncate text-left">
-                <span className="text-[9px] font-sans font-bold text-[#9A87A9] uppercase block tracking-wider">Exams Archive</span>
-                <p className="text-xs font-black text-blue-600 mt-0.5 truncate">Past Exam Records</p>
+              <div className="truncate text-left font-sans">
+                <span className="text-[9px] font-black text-[#7C6B93] block tracking-wider font-mono">Waiting Approvals</span>
+                <p className="text-[11px] font-bold text-black-600 mt-0.5 truncate">{schoolStats.pending_vetting_slips} Papers Pending</p>
               </div>
             </div>
-            <ChevronRight className="w-3.5 h-3.5 text-[#9A87A9] group-hover:translate-x-0.5 group-hover:text-blue-600 transition-all shrink-0" />
+            <ChevronRight className="w-3.5 h-3.5 text-[#7C6B93] group-hover:translate-x-1 group-hover:text-[#7C3AED] transition-all shrink-0" />
           </div>
 
-          {/* Card 4: CBT Scheduling Timetable Portal */}
-          <div onClick={onNavigateToScheduler} className="p-4 bg-white border border-[#9A87A9]/30 hover:border-[#2A1A63] rounded-xl flex items-center justify-between shadow-3xs cursor-pointer group transition-all w-full">
-            <div className="flex items-center gap-3 truncate">
-              <div className="w-9 h-9 bg-[#FAF9FA] border border-[#9A87A9]/20 rounded-lg flex items-center justify-center text-[#9A87A9] group-hover:bg-[#2A1A63] group-hover:text-white transition-all shrink-0">
-                <Calendar className="w-4 h-4" />
+          {/* 4. Audit center */}
+          <div onClick={onNavigateToArchive} className="py-3 px-4 bg-purple-400/20 border border-[#E2D5F8] hover:border-[#7C3AED] rounded-2xl flex items-center justify-between shadow-2xs cursor-pointer group transition-all w-full">
+            <div className="flex items-center gap-2.5 truncate">
+              <div className="w-8 h-8 bg-[#7C3AED] border border-[#E2D5F8] rounded-xl flex items-center justify-center text-white group-hover:bg-[#7C3AED] group-hover:text-white transition-all shrink-0 shadow-2xs">
+                <CheckCircle className="w-3.5 h-3.5" />
               </div>
-              <div className="truncate text-left">
-                <span className="text-[9px] font-sans font-bold text-[#9A87A9] uppercase block tracking-wider">CBT Scheduling</span>
-                <p className="text-xs font-black text-slate-950 mt-0.5 truncate">Exam Timetable</p>
+              <div className="truncate text-left font-sans">
+                <span className="text-[9px] font-black text-[#7C6B93] block tracking-wider font-mono">Exam Archive</span>
+                <p className="text-[11px] font-bold text-black-900 mt-0.5 truncate">Audit center</p>
               </div>
             </div>
-            <ChevronRight className="w-3.5 h-3.5 text-[#9A87A9] group-hover:translate-x-0.5 group-hover:text-[#2A1A63] transition-all shrink-0" />
+            <ChevronRight className="w-3.5 h-3.5 text-[#7C6B93] group-hover:translate-x-1 group-hover:text-[#7C3AED] transition-all shrink-0" />
+          </div>
+
+          {/* 5. Timetable */}
+          <div onClick={onNavigateToScheduler} className="py-3 px-4 bg-purple-400/20 border border-[#E2D5F8] hover:border-[#7C3AED] rounded-2xl flex items-center justify-between shadow-2xs cursor-pointer group transition-all w-full sm:col-span-2 lg:col-span-1">
+            <div className="flex items-center gap-2.5 truncate">
+              <div className="w-8 h-8 bg-[#7C3AED] border border-[#E2D5F8] rounded-xl flex items-center justify-center text-white group-hover:bg-[#7C3AED] group-hover:text-white transition-all shrink-0 shadow-2xs">
+                <Calendar className="w-3.5 h-3.5" />
+              </div>
+              <div className="truncate text-left font-sans">
+                <span className="text-[9px] font-black text-[#7C6B93] block tracking-wider font-mono">CBT Scheduling</span>
+                <p className="text-[11px] font-bold text-black-900 mt-0.5 truncate">Timetable</p>
+              </div>
+            </div>
+            <ChevronRight className="w-3.5 h-3.5 text-[#7C6B93] group-hover:translate-x-1 group-hover:text-[#7C3AED] transition-all shrink-0" />
           </div>
 
         </div>
 
-        {/* MONITOR FEED PIPELINE SELECTION ROW */}
-        <div className="bg-white border border-[#9A87A9]/30 rounded-xl p-4 md:p-5 shadow-2xs min-h-[300px] lg:h-[360px] flex flex-col overflow-hidden w-full">
-          <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-4 shrink-0 w-full">
+       {/* 📺 ACTIVE EXAMINATION HALL MONITOR CHANNELS SECTION */}
+        <div className="bg-gradient-to-t from-[#D8B4FE]/60 via-[#EEDAFE]/40 to-[#F7F2FF] border border-[#E2D5F8] rounded-3xl p-5 shadow-xs flex flex-col overflow-hidden w-full text-left">
+          <div className="flex items-center gap-2 border-b border-[#E2D5F8]/60 pb-3 mb-3 shrink-0 w-full font-mono">
             <Radio className="w-4 h-4 text-emerald-500 animate-pulse" />
-            <span className="text-[10px] font-mono font-black text-[#9A87A9] uppercase tracking-wider">Active Examination Hall Monitor Channels</span>
+            <span className="text-[10px] font-black text-[#7C6B93] uppercase tracking-wider">Active Examination Hall Monitor Channels</span>
           </div>
 
-          <div className="flex-1 overflow-y-auto space-y-3 pr-1 w-full text-left pb-1">
+          <div className="flex-1 w-full pb-1 flex flex-col items-center">
             {(!Array.isArray(liveSessions) || liveSessions.length === 0) ? (
-              <div className="w-full h-full flex flex-col justify-center items-center text-center font-mono text-[10px] uppercase text-[#9A87A9] py-12 font-bold">
-                No active examination room sessions are currently running on the school network.
+              <div className="w-full flex flex-col justify-center items-center text-center font-mono py-10">
+                <div className="w-24 h-24 flex items-center justify-center text-[#7C3AED] mb-2">
+                  <img 
+                    src="/thinking-character.png" 
+                    alt="Thinking Character" 
+                    className="w-20 h-20 object-contain"
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
+                </div>
+                <p className="text-xs font-black uppercase tracking-wide text-slate-900 font-sans mt-2">NO ACTIVE EXAMINATION ROOM SESSIONS ARE CURRENTLY RUNNING ON THE SCHOOL NETWORK.</p>
               </div>
             ) : (
-              liveSessions.map((session) => (
-                <div key={session.id} className="p-4 border border-[#9A87A9]/20 rounded-xl bg-[#FAF9FA]/60 hover:bg-white hover:border-[#9A87A9]/50 transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 w-full shadow-3xs">
-                  <div className="space-y-1.5 w-full sm:w-auto truncate">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="px-1.5 py-0.5 text-[8px] font-mono font-black bg-emerald-50 text-emerald-700 rounded-sm border border-emerald-100 tracking-wider shrink-0 uppercase">LIVE RUNNING</span>
-                      
-                      <span className="px-2 py-0.5 text-[8px] font-mono font-black bg-[#2A1A63] text-white border border-[#2A1A63] uppercase tracking-wide flex items-center gap-1 shrink-0 rounded-sm">
-                        <Tags className="w-2.5 h-2.5 opacity-60" /> {session.category || 'EXAM'}
-                      </span>
-                      
-                      <h4 className="text-xs md:text-sm font-black text-slate-950 uppercase tracking-tight truncate">{session.subject} — {session.arm}</h4>
-                    </div>
-                    <p className="text-[11px] font-medium text-[#9A87A9] font-mono uppercase truncate">
-                      Invigilator: <span className="font-sans font-bold text-slate-700 text-xs">{session.supervisor}</span>
-                    </p>
-                  </div>
-
-                  <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-50 shrink-0 font-mono text-[11px] font-bold">
-                    <div className="flex items-center gap-1 text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded uppercase tracking-wide shrink-0">
-                      <Clock className="w-3.5 h-3.5 text-[#9A87A9]" /> {session.duration}
+              <div className="w-full space-y-2.5">
+                {liveSessions.map((session) => (
+                  <div key={session.id} className="p-3.5 border border-[#E2D5F8] rounded-2xl bg-white hover:border-[#7C3AED] transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 w-full shadow-2xs">
+                    <div className="space-y-1 flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="px-2 py-0.5 text-[8px] font-mono font-black bg-emerald-50 text-emerald-700 rounded-lg border border-emerald-200 tracking-wider shrink-0 uppercase">LIVE RUNNING</span>
+                        <span className="px-2 py-0.5 text-[8px] font-mono font-black bg-[#7C3AED] text-white rounded-lg uppercase tracking-wide flex items-center gap-1 shrink-0">
+                          <Tags className="w-2.5 h-2.5 opacity-80" /> {session.category || 'EXAM'}
+                        </span>
+                        <h4 className="text-xs md:text-sm font-black text-slate-900 uppercase tracking-tight truncate flex-1 min-w-[200px]">{session.subject} — {session.arm}</h4>
+                      </div>
+                      <p className="text-[11px] font-medium text-[#7C6B93] font-mono uppercase truncate">
+                        Invigilator: <span className="font-sans font-bold text-slate-800 text-xs">{session.supervisor}</span>
+                      </p>
                     </div>
 
-                    {session.alertsCount > 0 ? (
-                      <span className="flex items-center gap-1 text-[#C62927] bg-rose-50 border border-rose-100 px-2 py-0.5 rounded uppercase tracking-wide shrink-0 font-black animate-pulse">
-                        <AlertTriangle className="w-3.5 h-3.5" /> {session.alertsCount} Irregularities
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1 text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded uppercase tracking-wide shrink-0 font-black">
-                        <CheckCircle className="w-3.5 h-3.5" /> Secure Room
-                      </span>
-                    )}
-                    <button 
-                      onClick={() => onNavigateToLiveSurveillance(session)} 
-                      className="px-4 py-1.5 bg-[#2A1A63] hover:opacity-90 text-white text-[10px] uppercase font-bold tracking-wider rounded-md cursor-pointer shadow-md shrink-0 transition-all active:scale-[0.97]"
-                    >
-                      Monitor Room
-                    </button>
+                    <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto border-t sm:border-t-0 pt-2.5 sm:pt-0 border-slate-100 shrink-0 font-mono text-[11px] font-bold">
+                      <div className="flex items-center gap-1 text-slate-600 bg-[#FAF9FA] border border-[#E2D5F8] px-2.5 py-1.5 rounded-xl uppercase tracking-wide shrink-0">
+                        <Clock className="w-3.5 h-3.5 text-[#7C6B93]" /> {formatCleanDuration(session.duration)}
+                      </div>
+
+                      {session.alertsCount > 0 ? (
+                        <span className="flex items-center gap-1 text-[#C62927] bg-rose-50 border border-rose-200 px-2.5 py-1.5 rounded-xl uppercase tracking-wide shrink-0 font-black animate-pulse">
+                          <AlertTriangle className="w-3.5 h-3.5" /> {session.alertsCount} Irregularities
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 rounded-xl uppercase tracking-wide shrink-0 font-black">
+                          <CheckCircle className="w-3.5 h-3.5" /> Secure Room
+                        </span>
+                      )}
+                      <button 
+                        onClick={() => onNavigateToLiveSurveillance(session)} 
+                        className="px-3.5 py-1.5 bg-[#22C55E] hover:bg-[#16A34A] text-white text-[10px] uppercase font-black tracking-wider rounded-xl cursor-pointer shadow-md shrink-0 transition-all active:scale-[0.97] !bg-[#22C55E] !text-white"
+                      >
+                        Monitor Room
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))
+                ))}
+              </div>
             )}
           </div>
         </div>
 
       </main>
 
-      <footer className="w-full border-t border-[#9A87A9]/20 bg-white py-2.5 text-center text-[9px] font-black text-[#9A87A9] tracking-wider font-mono uppercase px-4 shrink-0">
-        Start-Rite Intranet Institutional Security Matrix
+      <footer className="w-full border-t border-[#7C6B93]/20 bg-white py-2.5 text-center text-[10px] font-black text-[#7C6B93] tracking-wider font-mono uppercase px-4 shrink-0">
+        Start-rite intrnet institutional security matrix
       </footer>
 
-      {/* DRAWER MODAL OVERLAYS */}
       <div className={`fixed inset-0 bg-slate-950/40 backdrop-blur-xs z-[10000] transition-all duration-300 flex flex-col justify-end w-full ${showLogoutDrawer ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
         <div className={`w-full bg-white border-t-2 border-[#C62927] p-4 md:p-6 shadow-2xl transition-all duration-300 transform font-mono ${showLogoutDrawer ? 'translate-y-0' : 'translate-y-full'}`}>
           <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 w-full select-none text-left">
             <div className="flex items-center gap-3 w-full sm:w-auto">
-              <div className="w-10 h-10 bg-rose-50 text-[#C62927] border border-rose-100 rounded-lg flex items-center justify-center shrink-0">
+              <div className="w-10 h-10 bg-rose-50 text-[#C62927] border border-rose-100 rounded-xl flex items-center justify-center shrink-0">
                 <ShieldAlert className="w-5 h-5" />
               </div>
               <div>
                 <h3 className="text-xs font-black text-slate-950 uppercase tracking-tight font-sans">Revoke Administrative Session Token?</h3>
-                <p className="text-[10px] font-bold text-[#9A87A9] uppercase mt-0.5 tracking-wide font-mono">Signing out terminates active management control feeds immediately.</p>
+                <p className="text-[10px] font-bold text-[#7C6B93] uppercase mt-0.5 tracking-wide font-mono">Signing out terminates active management control feeds immediately.</p>
               </div>
             </div>
             <div className="flex gap-2 w-full sm:w-auto font-sans border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 justify-end">
-              <button onClick={() => setShowLogoutDrawer(false)} className="px-4 py-2 border border-[#9A87A9]/30 text-slate-600 hover:bg-[#FAF9FA] text-xs font-bold uppercase rounded-lg cursor-pointer transition-all text-center">Cancel Actions</button>
-              <button onClick={onLogOut} className="px-5 py-2.5 bg-[#2A1A63] text-white text-xs font-bold uppercase rounded-lg shadow-md cursor-pointer font-mono text-center">Confirm Logout</button>
+              <button onClick={() => setShowLogoutDrawer(false)} className="px-4 py-2 border border-[#E2D5F8] text-slate-600 hover:bg-[#FAF9FA] text-xs font-bold uppercase rounded-xl cursor-pointer transition-all text-center">Cancel Actions</button>
+              <button onClick={onLogOut} className="px-5 py-2.5 bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-bold uppercase rounded-xl shadow-md cursor-pointer font-mono text-center">Confirm Logout</button>
             </div>
           </div>
         </div>
@@ -335,4 +375,4 @@ export default function AdminDashboard({
 
     </div>
   );
-} 
+}

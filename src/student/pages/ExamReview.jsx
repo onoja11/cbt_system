@@ -21,8 +21,15 @@ export default function ExamReview({ student, assessment, questions, answers, ti
       if (cleanType === 'theory') {
         isCorrect = null; 
       } else {
-        const correctIndex = q.options?.findIndex(opt => opt.isCorrect || opt.is_correct);
-        isCorrect = studentAnswer === correctIndex;
+        // Find correct option index from backend properties or option flags
+        const correctIndex = q.options?.findIndex(opt => opt.isCorrect || opt.is_correct === true || opt.is_correct === 1);
+        
+        // Fallback if options array uses boolean flags differently
+        if (correctIndex === -1 && q.correct_option_index !== undefined) {
+          isCorrect = studentAnswer === parseInt(q.correct_option_index, 10);
+        } else {
+          isCorrect = studentAnswer === correctIndex;
+        }
       }
 
       if (isCorrect === true) {
@@ -34,7 +41,8 @@ export default function ExamReview({ student, assessment, questions, answers, ti
         ...q,
         studentAnswer,
         isCorrect,
-        cleanType
+        cleanType,
+        correctOptIndex: q.correct_option_index !== undefined ? parseInt(q.correct_option_index, 10) : q.options?.findIndex(opt => opt.isCorrect || opt.is_correct === true || opt.is_correct === 1)
       };
     });
 
@@ -49,7 +57,6 @@ export default function ExamReview({ student, assessment, questions, answers, ti
     };
   }, [questions, answers]);
 
-  // 🎯 TIME spent Formatter Guard
   const formatSpentTime = (seconds) => {
     if (!seconds || seconds < 0) return "00:00";
     const m = Math.floor(seconds / 60).toString().padStart(2, '0');
@@ -57,7 +64,6 @@ export default function ExamReview({ student, assessment, questions, answers, ti
     return `${m}:${s}`;
   };
 
-  // 🎯 MATCHES LARAVEL DB SCHEMA BOUNDS DYNAMICALLY 
   const allowedMinutes = useMemo(() => {
     if (!assessment) return "30";
     return assessment.duration_minutes || assessment.duration || "30";
@@ -130,7 +136,6 @@ export default function ExamReview({ student, assessment, questions, answers, ti
                 {formatSpentTime(timeSpentSeconds)}
               </span>
               <span className="text-[10px] font-mono font-bold text-slate-500 block">
-                {/* 🎯 CORRRECTED PARAMETER PIPELINE EXTENSION */}
                 Of {allowedMinutes} Minutes Allowed
               </span>
             </div>
@@ -148,8 +153,9 @@ export default function ExamReview({ student, assessment, questions, answers, ti
           <div className="space-y-4 text-left">
             {stats.reviewList.map((q, idx) => {
               const isTheory = q.cleanType === 'theory';
-              const correctOptIndex = q.options?.findIndex(opt => opt.isCorrect || opt.is_correct);
+              const correctOptIndex = q.correctOptIndex;
               const studentChoiceIndex = q.studentAnswer;
+              const hasAnswered = studentChoiceIndex !== undefined && studentChoiceIndex !== null && String(studentChoiceIndex).trim() !== '';
 
               return (
                 <div 
@@ -157,9 +163,11 @@ export default function ExamReview({ student, assessment, questions, answers, ti
                   className={`p-5 bg-white border rounded-2xl shadow-3xs space-y-4 relative ${
                     isTheory 
                       ? 'border-[#9A87A9]/20' 
-                      : q.isCorrect 
-                        ? 'border-emerald-500/30 ring-1 ring-emerald-500/5' 
-                        : 'border-rose-500/30 ring-1 ring-rose-500/5'
+                      : !hasAnswered
+                        ? 'border-amber-500/30 ring-1 ring-amber-500/5'
+                        : q.isCorrect 
+                          ? 'border-emerald-500/30 ring-1 ring-emerald-500/5' 
+                          : 'border-rose-500/30 ring-1 ring-rose-500/5'
                   }`}
                 >
                   
@@ -173,7 +181,11 @@ export default function ExamReview({ student, assessment, questions, answers, ti
                       
                       {/* VERIFICATION BADGES */}
                       {!isTheory && (
-                        q.isCorrect ? (
+                        !hasAnswered ? (
+                          <span className="bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-0.5 rounded-md font-black flex items-center gap-1">
+                            ⚠️ Unanswered
+                          </span>
+                        ) : q.isCorrect ? (
                           <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 rounded-md font-black flex items-center gap-1">
                             <CheckCircle2 className="w-3 h-3" /> Correct
                           </span>
@@ -231,7 +243,7 @@ export default function ExamReview({ student, assessment, questions, answers, ti
                     </div>
                   )}
 
-                  {/* THEORY ANSWER DISPLAY / RUBRIC MATRIX ADVISORY */}
+                  {/* THEORY ANSWER DISPLAY */}
                   {isTheory && (
                     <div className="space-y-3">
                       <div className="p-3.5 bg-slate-50 border border-slate-100 rounded-xl text-left space-y-1.5">

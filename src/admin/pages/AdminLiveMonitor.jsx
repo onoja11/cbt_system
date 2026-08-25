@@ -40,7 +40,6 @@ export default function AdminLiveMonitor({ onNavigateBack, selectedSessionInfo }
             if (payload.desks) setMonitoredDesks(payload.desks);
             if (payload.supervisor) setDynamicSupervisor(payload.supervisor);
             
-            // 🎯 FIXED: ROBUST MATRIX PATH LOOKUPS MATCHING ALL ADMIN ENDPOINT OBJECT STRUCTS[cite: 2]
             const rawScheduledEnd = 
               payload.assessment_meta?.scheduled_end || 
               payload.session?.scheduled_end || 
@@ -53,7 +52,6 @@ export default function AdminLiveMonitor({ onNavigateBack, selectedSessionInfo }
               const targetTimeString = String(rawScheduledEnd).replace(' ', 'T');
               examEndTimeRef.current = new Date(targetTimeString).getTime();
             } else if (payload.desks && payload.desks.length > 0 && !examEndTimeRef.current) {
-              // 🎯 PROCTION FALLBACK: Fall back to maximum student desk time left if metadata objects fail to load[cite: 2]
               const maxSeconds = Math.max(...payload.desks.map(d => parseInt(d.seconds_remaining || d.secondsLeft || 0, 10)));
               if (maxSeconds > 0) {
                 examEndTimeRef.current = Date.now() + (maxSeconds * 1000);
@@ -77,7 +75,6 @@ export default function AdminLiveMonitor({ onNavigateBack, selectedSessionInfo }
     };
   }, [targetAssessmentId, selectedSessionInfo]);
 
-  // Precise 1-second countdown loop matching the student layout view exactly
   useEffect(() => {
     const tickerInterval = setInterval(() => {
       if (!examEndTimeRef.current) return;
@@ -93,87 +90,116 @@ export default function AdminLiveMonitor({ onNavigateBack, selectedSessionInfo }
     return () => clearInterval(tickerInterval);
   }, []);
 
-  const formatSecondsToMinutes = (secs) => {
+  const formatRoomCountdown = (secs) => {
     if (secs === null || secs <= 0) return '00:00';
-    const m = Math.floor(secs / 60).toString().padStart(2, '0');
-    const s = (secs % 60).toString().padStart(2, '0');
-    return `${m}:${s}`;
+    
+    const hours = Math.floor(secs / 3600);
+    const minutes = Math.floor((secs % 3600) / 60);
+    const seconds = secs % 60;
+
+    const pad = (n) => n.toString().padStart(2, '0');
+
+    if (hours > 0) {
+      return `${hours}h ${pad(minutes)}m ${pad(seconds)}s`;
+    }
+    
+    return `${pad(minutes)}:${pad(seconds)}`;
   };
 
   const totalFlaggedAlerts = monitoredDesks.reduce((sum, d) => sum + (d.activeStrikes > 0 ? 1 : 0), 0);
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-white flex flex-col justify-center items-center font-mono text-xs uppercase text-[#9A87A9] tracking-widest gap-2">
-        <Loader2 className="w-5 h-5 animate-spin text-[#2A1A63]" />
+      <div className="min-h-screen bg-[#F7F5FC] flex flex-col justify-center items-center font-mono text-xs uppercase text-[#7C6B93] tracking-widest gap-2">
+        <Loader2 className="w-5 h-5 animate-spin text-[#7C3AED]" />
         Connecting to active classroom workstation monitors...
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#FAF9FA] text-[#2A1A63] font-sans flex flex-col justify-between select-none">
-      <header className="w-full bg-white border-b border-[#9A87A9]/30 px-6 py-4 sticky top-0 z-40 shadow-3xs">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 w-full">
-          <div className="flex items-center gap-2">
-            <button onClick={onNavigateBack} className="p-1.5 border border-[#9A87A9]/30 rounded-lg text-[#9A87A9] hover:text-[#2A1A63] mr-2 cursor-pointer transition-all active:scale-[0.96]">
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-            <div className="mr-1"><Logo size={45} showText={false} /></div>
-            <div className="text-left">
-              <h2 className="text-xs font-black text-slate-950 uppercase tracking-wider">Live Class Surveillance Feed</h2>
-              <p className="text-[10px] font-bold text-[#9A87A9] uppercase font-mono tracking-tight">Active Paper: {targetSubject}</p>
-            </div>
+    <div className="min-h-screen bg-[#F7F5FC] text-[#2A1A63] font-sans flex flex-col justify-between select-none">
+      
+      {/* Header Banner matching AdminDashboard & Class Directory gradient style */}
+      <header className="w-full bg-gradient-to-r from-[#7C3AED] via-[#8B5CF6] to-[#A78BFA] px-6 py-4 flex justify-between items-center shadow-xs sticky top-0 z-40 shrink-0">
+        <div className="flex items-center gap-3">
+          <button onClick={onNavigateBack} className="w-9 h-9 bg-white/20 hover:bg-white/30 text-white rounded-full flex items-center justify-center transition-all cursor-pointer shadow-xs mr-1">
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <div className="bg-white p-1.5 rounded-full shadow-xs flex items-center justify-center">
+            <Logo size={32} showText={false} />
           </div>
-          <span className="text-[10px] font-mono font-black text-[#C62927] bg-rose-50 border border-rose-100 px-2.5 py-1.5 rounded-lg uppercase tracking-wide shrink-0">
-            🔒 READ-ONLY HALL AUDIT MODE
-          </span>
+          <div className="text-left">
+            <h1 className="text-xs font-black uppercase tracking-wider text-white">Live Class Surveillance Feed</h1>
+            <p className="text-[11px] font-bold text-white uppercase tracking-wider mt-0.5">Active Paper: {targetSubject}</p>
+          </div>
         </div>
+
+        <span className="px-3 py-1.5 bg-white/20 border border-white/30 text-white text-[10px] font-black rounded-xl uppercase tracking-widest font-mono shadow-2xs">
+          🔒 READ-ONLY HALL AUDIT MODE
+        </span>
       </header>
 
-      <div className="w-full max-w-7xl mx-auto px-4 md:px-6 mt-6 grid grid-cols-1 sm:grid-cols-4 gap-4 font-mono shrink-0 text-left">
-        {/* ROOM COUNTDOWN TIMER */}
-        <div className="p-4 bg-white border border-[#9A87A9]/20 rounded-xl flex items-center gap-3 shadow-3xs bg-indigo-50/10 border-indigo-100 font-sans">
-          <Clock className="w-5 h-5 text-[#2A1A63]" />
+      <div className="w-full max-w-7xl mx-auto px-8 mt-6 grid grid-cols-1 sm:grid-cols-4 gap-4 font-mono shrink-0 text-left">
+        <div className="p-4 bg-[#F3EEFC] border border-[#E2D5F8] rounded-2xl flex items-center gap-3.5 shadow-2xs">
+          <div className="w-10 h-10 bg-white border border-[#E2D5F8] rounded-xl flex items-center justify-center text-[#7C3AED] shadow-2xs">
+            <Clock className="w-5 h-5" />
+          </div>
           <div>
-            <span className="text-[9px] font-black text-[#9A87A9] uppercase font-mono block">Room Time Remaining</span>
-            <p className={`text-xs font-black font-mono ${adminRoomSecondsLeft !== null && adminRoomSecondsLeft <= 300 ? 'text-[#C62927] animate-pulse' : 'text-slate-950'}`}>
-              {adminRoomSecondsLeft !== null ? formatSecondsToMinutes(adminRoomSecondsLeft) : 'Synchronizing...'}
+            <span className="text-[10px] font-sans font-bold text-[#7C6B93] uppercase block">Room Time Remaining</span>
+            <p className={`text-base font-black font-mono mt-0.5 ${adminRoomSecondsLeft !== null && adminRoomSecondsLeft <= 300 ? 'text-rose-600 animate-pulse' : 'text-slate-900'}`}>
+              {adminRoomSecondsLeft !== null ? formatRoomCountdown(adminRoomSecondsLeft) : 'Synchronizing...'}
             </p>
           </div>
         </div>
 
-        <div className="p-4 bg-white border border-[#9A87A9]/20 rounded-xl flex items-center gap-3 shadow-3xs">
-          <Users className="w-5 h-5 text-[#9A87A9]" />
+        <div className="p-4 bg-[#F3EEFC] border border-[#E2D5F8] rounded-2xl flex items-center gap-3.5 shadow-2xs">
+          <div className="w-10 h-10 bg-white border border-[#E2D5F8] rounded-xl flex items-center justify-center text-[#7C3AED] shadow-2xs">
+            <Users className="w-5 h-5" />
+          </div>
           <div>
-            <span className="text-[9px] font-sans font-black text-[#9A87A9] uppercase tracking-wider block">Inspecting Classroom</span>
-            <p className="text-xs font-black text-slate-950 uppercase truncate">{targetArm}</p>
+            <span className="text-[10px] font-sans font-bold text-[#7C6B93] uppercase block">Inspecting Classroom</span>
+            <p className="text-base font-black text-slate-900 uppercase truncate mt-0.5">{targetArm}</p>
           </div>
         </div>
-        <div className="p-4 bg-white border border-[#9A87A9]/20 rounded-xl flex items-center gap-3 shadow-3xs">
-          <Monitor className="w-5 h-5 text-[#9A87A9]" />
+
+        <div className="p-4 bg-[#F3EEFC] border border-[#E2D5F8] rounded-2xl flex items-center gap-3.5 shadow-2xs">
+          <div className="w-10 h-10 bg-white border border-[#E2D5F8] rounded-xl flex items-center justify-center text-[#7C3AED] shadow-2xs">
+            <Monitor className="w-5 h-5" />
+          </div>
           <div>
-            <span className="text-[9px] font-sans font-black text-[#9A87A9] uppercase tracking-wider block">Room Supervisor</span>
-            <p className="text-xs font-black text-slate-950 uppercase truncate">{dynamicSupervisor}</p>
+            <span className="text-[10px] font-sans font-bold text-[#7C6B93] uppercase block">Room Supervisor</span>
+            <p className="text-base font-black text-slate-900 uppercase truncate mt-0.5">{dynamicSupervisor}</p>
           </div>
         </div>
-        <div className="p-4 bg-white border border-[#9A87A9]/20 rounded-xl flex items-center gap-3 shadow-3xs bg-rose-50/20 border-rose-100">
-          <ShieldAlert className="w-5 h-5 text-[#C62927] animate-pulse" />
+
+        <div className="p-4 bg-[#FCE7EE] border border-[#F8D3DF] rounded-2xl flex items-center gap-3.5 shadow-2xs">
+          <div className="w-10 h-10 bg-white border border-[#F8D3DF] rounded-xl flex items-center justify-center text-[#E11D48] shadow-2xs">
+            <ShieldAlert className="w-5 h-5 animate-pulse" />
+          </div>
           <div>
-            <span className="text-[9px] font-sans font-black text-[#C62927]/70 uppercase tracking-wider block">Flagged Student Desks</span>
-            <p className="text-xs font-black text-[#C62927] uppercase">{totalFlaggedAlerts} Terminals Triggered</p>
+            <span className="text-[10px] font-sans font-bold text-slate-600 uppercase block">Flagged Student Desks</span>
+            <p className="text-base font-black text-[#E11D48] uppercase mt-0.5">{totalFlaggedAlerts} Terminals Triggered</p>
           </div>
         </div>
       </div>
 
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 flex flex-col justify-start my-auto">
-        <div className="mb-4 pb-1 border-b border-[#FAF9FA] w-full text-left">
-          <span className="text-[10px] font-black text-[#9A87A9] uppercase tracking-wider font-mono">Live Student Workstations Seating Grid</span>
+      <main className="flex-1 max-w-7xl w-full mx-auto px-8 py-6 flex flex-col justify-start">
+        <div className="mb-4 pb-1 border-b border-[#E2D5F8] w-full text-left">
+          <span className="text-xs font-black text-[#7C6B93] uppercase tracking-wider font-mono">Live Student Workstations Seating Grid</span>
         </div>
 
         {monitoredDesks.length === 0 ? (
-          <div className="w-full text-center p-12 font-mono text-xs text-[#9A87A9] font-black uppercase tracking-wide py-24 bg-white border border-[#9A87A9]/20 rounded-xl shadow-3xs">
-            No active student computers are transmitting telemetry streams for this paper session.
+          <div className="w-full flex flex-col justify-center items-center text-center font-mono py-24 bg-[#F3EEFC] border border-dashed border-[#E2D5F8] rounded-3xl shadow-xs my-auto">
+            <div className="w-32 h-32 flex items-center justify-center text-[#7C3AED] mb-3">
+              <img 
+                src="/thinking-character.png" 
+                alt="Thinking Character" 
+                className="w-28 h-28 object-contain drop-shadow-sm"
+                onError={(e) => { e.target.style.display = 'none'; }}
+              />
+            </div>
+            <p className="text-xs font-black uppercase tracking-wide text-slate-900 font-sans mt-2">NO ACTIVE STUDENT COMPUTERS ARE TRANSMITTING TELEMETRY STREAMS FOR THIS PAPER SESSION.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-4 w-full">
@@ -181,27 +207,63 @@ export default function AdminLiveMonitor({ onNavigateBack, selectedSessionInfo }
               const strikeCount = desk.activeStrikes || 0;
               const hasBreaches = strikeCount > 0;
               const isLockedOut = strikeCount >= 3;
+              const isNotStarted = desk.linkState === 'Not Started' || desk.linkState === 'Absent / Offline';
 
               return (
-                <div key={desk.terminalId || idx} className={`border rounded-xl p-4 flex flex-col justify-between h-36 transition-all shadow-3xs bg-white text-left ${isLockedOut ? 'border-[#C62927] ring-1 ring-[#C62927]/10' : hasBreaches ? 'border-amber-400' : 'border-[#9A87A9]/20'}`}>
+                <div 
+                  key={desk.terminalId || idx} 
+                  className={`border rounded-3xl p-5 flex flex-col justify-between h-40 transition-all shadow-2xs text-left ${
+                    isNotStarted 
+                      ? 'border-dashed border-slate-300 bg-slate-50/70 opacity-80' 
+                      : isLockedOut 
+                        ? 'border-rose-500 ring-2 ring-rose-500/20 bg-white' 
+                        : hasBreaches 
+                          ? 'border-amber-400 bg-white' 
+                          : 'border-[#E2D5F8] bg-white hover:border-[#7C3AED]'
+                  }`}
+                >
                   <div className="space-y-1.5 min-w-0">
-                    <div className="flex justify-between items-center font-mono text-[9px] font-black text-[#9A87A9] border-b border-[#FAF9FA] pb-1 uppercase">
+                    <div className="flex justify-between items-center font-mono text-[9px] font-black text-[#7C6B93] border-b border-[#E2D5F8]/60 pb-1.5 uppercase">
                       <span className="truncate">Desk {desk.terminalId || '00'}</span>
-                      <span className={`shrink-0 tracking-tight ${isLockedOut ? 'text-[#C62927] font-black animate-pulse' : hasBreaches ? 'text-amber-600 font-black' : 'text-[#9A87A9]'}`}>
-                        {strikeCount} / 3 Strikes
+                      <span className={`shrink-0 tracking-tight px-2 py-0.5 rounded-lg font-black ${
+                        isNotStarted 
+                          ? 'bg-slate-200 text-slate-600' 
+                          : isLockedOut 
+                            ? 'bg-rose-100 text-rose-700 animate-pulse' 
+                            : hasBreaches 
+                              ? 'bg-amber-100 text-amber-700' 
+                              : 'bg-purple-50 text-[#7C3AED]'
+                      }`}>
+                        {isNotStarted ? 'NOT STARTED' : `${strikeCount} / 3 Strikes`}
                       </span>
                     </div>
-                    <h4 className="text-xs font-black text-slate-950 uppercase tracking-tight truncate w-full" title={desk.candidate}>
-                      {desk.candidate || 'VACANT NODE'}
+                    <h4 className="text-xs font-black text-slate-900 uppercase tracking-tight truncate w-full font-sans" title={desk.candidate}>
+                      {desk.candidate || 'CANDIDATE'}
                     </h4>
-                    <p className="text-[10px] font-mono font-black text-[#9A87A9] truncate">ID: {desk.admission_no || 'N/A'}</p>
-                    <p className="text-[10px] font-mono font-bold text-slate-500 truncate mt-0.5">{desk.progress || 'Awaiting Startup...'}</p>
+                    <p className="text-[10px] font-mono font-black text-[#7C6B93] truncate">ID: {desk.admission_no || 'N/A'}</p>
+                    <p className={`text-[10px] font-mono font-bold truncate mt-1 ${isNotStarted ? 'text-slate-400 italic' : 'text-slate-600'}`}>
+                      {desk.progress || 'Awaiting Startup...'}
+                    </p>
                   </div>
-                  <div className="pt-2.5 border-t border-slate-50 flex justify-between items-center text-[9px] font-mono font-black uppercase tracking-wider min-w-0">
-                    <span className={`truncate mr-1 ${isLockedOut ? 'text-[#C62927]' : hasBreaches ? 'text-amber-600' : 'text-emerald-600'}`}>
+                  <div className="pt-3 border-t border-[#E2D5F8]/60 flex justify-between items-center text-[9px] font-mono font-black uppercase tracking-wider min-w-0">
+                    <span className={`truncate mr-1 px-2.5 py-1 rounded-lg ${
+                      isNotStarted 
+                        ? 'bg-slate-200/80 text-slate-600 font-bold' 
+                        : isLockedOut 
+                          ? 'text-rose-600' 
+                          : hasBreaches 
+                            ? 'text-amber-600' 
+                            : 'text-emerald-600'
+                    }`}>
                       {desk.linkState || 'Connected'}
                     </span>
-                    {isLockedOut ? <AlertTriangle className="w-3.5 h-3.5 text-[#C62927] shrink-0" /> : <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
+                    {isNotStarted ? (
+                      <span className="w-2.5 h-2.5 rounded-full bg-slate-400 shrink-0" />
+                    ) : isLockedOut ? (
+                      <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                    ) : (
+                      <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                    )}
                   </div>
                 </div>
               );
@@ -209,7 +271,10 @@ export default function AdminLiveMonitor({ onNavigateBack, selectedSessionInfo }
           </div>
         )}
       </main>
-      <footer className="w-full border-t border-[#9A87A9]/20 bg-white py-2.5 text-center text-[9px] font-black text-[#9A87A9] tracking-wider font-mono uppercase shrink-0">Start-Rite Schools Corporate Surveillance Infrastructure Matrix © 2026</footer>
+      
+      <footer className="w-full border-t border-[#7C6B93]/20 bg-white py-2.5 text-center text-[10px] font-black text-[#7C6B93] tracking-wider font-mono uppercase px-4 shrink-0">
+        Start-rite intrnet institutional security matrix
+      </footer>
     </div>
   );
 }

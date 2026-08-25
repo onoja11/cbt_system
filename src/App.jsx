@@ -7,7 +7,6 @@ import StudentLobby from './student/pages/StudentLobby';
 import ExamWorkspace from './student/pages/ExamWorkspace'; 
 import { apiRequest } from './core/api';
 
-// IMPORT YOUR OFFLINE STORAGE METHODS TO FORCE FLUSH ON SUBMIT
 import { getAllUnsyncedAnswers, clearSyncedAnswers } from './core/offlineDb';
 
 // ADMINISTRATIVE MASTER MODULE IMPORTS
@@ -15,25 +14,24 @@ import AdminDashboard from './admin/pages/AdminDashboard';
 import AdminApproval from './admin/pages/AdminApproval';
 import AdminClassesDirectory from './admin/pages/AdminClassesDirectory';
 import AdminLiveMonitor from './admin/pages/AdminLiveMonitor';
-import AdminRecordsArchive from './admin/pages/AdminRecordsArchive';
+import AdminExamAuditCenter from './admin/pages/AdminExamAuditCenter';
 import ExamScheduler from './admin/pages/ExamScheduler';
+import AdminUsersDirectory from './admin/pages/AdminUsersDirectory';
+import DataInspectorPortal from './admin/pages/DataInspectorPortal';
 
 // DYNAMIC GRADING WORKSPACE IMPORTS
 import MarkEssays from './teacher/pages/MarkEssays';
 import GradebookMatrix from './teacher/pages/GradebookMatrix';
 
 export default function App() {
-  // MASTER INFRASTRUCTURE SYSTEM STATES
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentDomain, setCurrentDomain] = useState('login'); 
   const [userSession, setUserSession] = useState(null);
   
-  // CONTEXT RECOVERY LEDGER STORAGE PIPES
   const [teacherFolderContext, setTeacherFolderContext] = useState(null);
   const [selectedAssessmentId, setSelectedAssessmentId] = useState(null);
   const [selectedAdminLiveSession, setSelectedAdminLiveSession] = useState(null);
 
-  // Helper sanitizer to strip out event objects completely
   const sanitizeIncomingId = (idInput) => {
     if (!idInput) return null;
     if (idInput && idInput.target !== undefined && typeof idInput.preventDefault === 'function') {
@@ -46,7 +44,6 @@ export default function App() {
     return isNaN(parsed) ? null : parsed;
   };
 
-  // 🎯 RECONCILED CONTEXT RECOVERY LEDGER LOOKUPS ON MOUNT
   useEffect(() => {
     const savedToken = localStorage.getItem('intranet_bearer_token');
     const savedUser = localStorage.getItem('user_metadata');
@@ -59,7 +56,6 @@ export default function App() {
       setIsAuthenticated(true);
       setUserSession(JSON.parse(savedUser));
       
-      // Safety normalize string to protect route contexts
       const normalizedDomain = savedDomain === 'admin' ? 'admin_dash' : savedDomain;
       setCurrentDomain(normalizedDomain);
       
@@ -117,12 +113,10 @@ export default function App() {
   return (
     <div className="w-full min-h-screen bg-[#fafafa]">
       
-      {/* 1. PUBLIC GATEWAY: IDENTITY VERIFICATION TERMINAL */}
       {currentDomain === 'login' && (
         <Login onAuthSuccess={handleAuthSuccess} />
       )}
 
-      {/* 2. STUDENT LOBBY GATEWAY */}
       {currentDomain === 'student_lobby' && (
         <StudentLobby 
           student={userSession} 
@@ -136,7 +130,6 @@ export default function App() {
         />
       )}
 
-      {/* 3. STUDENT WORKSPACE */}
       {currentDomain === 'student_workspace' && (
         <ExamWorkspace 
           student={userSession}
@@ -159,24 +152,25 @@ export default function App() {
                 }
               }
               await apiRequest(`api/v1/student/assessments/${selectedAssessmentId}/finalize-submission`, { method: 'POST' });
-              alert("🎉 EXAM SECURELY COMMITTED AND SEALED!");
             } catch (err) {
               console.error(err);
             } finally {
-              handleSessionTermination();
+              // 🎯 Return to lobby after exam submission so they can use "View Graded Objective Results"
+              navigateToDomainContext('student_lobby');
             }
           }}
         />
       )}
 
-      {/* 4. MASTER HUB PANEL */}
       {currentDomain === 'admin_dash' && (
         <AdminDashboard 
           adminUser={userSession} 
           onNavigateToClasses={() => navigateToDomainContext('admin_classes')}
           onNavigateToApproval={() => navigateToDomainContext('admin_approval')}
           onNavigateToArchive={() => navigateToDomainContext('admin_archive')}
-          onNavigateToScheduler={() => navigateToDomainContext('admin_scheduler')} // 💡 WIRED CORRECTLY NOW
+          onNavigateToScheduler={() => navigateToDomainContext('admin_scheduler')}
+          onNavigateToUsers={() => navigateToDomainContext('admin_users_directory')}
+          onNavigateToDataInspector={() => navigateToDomainContext('admin_data_inspector')}
           onNavigateToLiveSurveillance={(session) => {
             setSelectedAdminLiveSession(session);
             localStorage.setItem('saved_admin_live_context', JSON.stringify(session));
@@ -186,11 +180,12 @@ export default function App() {
         />
       )}
 
-      {/* ADMIN LEVEL SUBSYSTEM ROUTES */}
       {currentDomain === 'admin_classes' && <AdminClassesDirectory onNavigateBack={() => navigateToDomainContext('admin_dash')} />}
       {currentDomain === 'admin_approval' && <AdminApproval onNavigateBack={() => navigateToDomainContext('admin_dash')} />}
-      {currentDomain === 'admin_archive' && <AdminRecordsArchive onNavigateBack={() => navigateToDomainContext('admin_dash')} />}
+      {currentDomain === 'admin_archive' && <AdminExamAuditCenter onNavigateBack={() => navigateToDomainContext('admin_dash')} />}
       {currentDomain === 'admin_scheduler' && <ExamScheduler onNavigateBack={() => navigateToDomainContext('admin_dash')} />}
+      {currentDomain === 'admin_users_directory' && <AdminUsersDirectory onNavigateBack={() => navigateToDomainContext('admin_dash')} />}
+      {currentDomain === 'admin_data_inspector' && <DataInspectorPortal onNavigateBack={() => navigateToDomainContext('admin_dash')} />}
       
       {currentDomain === 'admin_live' && (
         <AdminLiveMonitor 
@@ -203,8 +198,6 @@ export default function App() {
         />
       )}
 
-
-      {/* 5. INSTRUCTOR CONTROL PANEL DECK */}
       {currentDomain === 'teacher_dash' && (
         <TeacherDashboard 
           teacher={userSession} 
