@@ -145,7 +145,7 @@ export default function Login({ onAuthSuccess }) {
         </form>
 
         <div className="mt-4 text-center">
-          <span className="text-[11px] text-[#6E5D91] font-medium">Already have an account? <span className="text-[#2A1A63] font-bold cursor-pointer hover:underline">Log in</span></span>
+          {/* <span className="text-[11px] text-[#6E5D91] font-medium">Already have an account? <span className="text-[#2A1A63] font-bold cursor-pointer hover:underline">Log in</span></span> */}
         </div>
       </div>
 

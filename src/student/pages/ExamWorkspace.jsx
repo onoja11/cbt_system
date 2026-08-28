@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Clock, ShieldAlert, CheckCircle, Lock, Loader2, Award, Maximize, AlertTriangle, Check, User } from 'lucide-react';
+import { Clock, ShieldAlert, CheckCircle, Lock, Loader2, Award, Maximize, AlertTriangle, Check, User, Sparkles } from 'lucide-react';
 import { saveAnswerLocally } from '../../core/offlineDb';
 import { useOfflineSync } from '../../core/useOfflineSync';
 import { apiRequest, BASE_URL } from '../../core/api';
@@ -25,7 +25,10 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
     }
   }); 
 
-  const [timeLeft, setTimeLeft] = useState(null); 
+  // 🎯 Unified Wall-Clock Total Seconds State (Matches LiveMonitor exactly)
+  const [totalSecondsLeft, setTotalSecondsLeft] = useState(null); 
+  const [isExtended, setIsExtended] = useState(false);
+
   const [examMeta, setExamMeta] = useState(null);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false); 
@@ -49,11 +52,11 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
   });
   
   const isClearanceGraceActiveRef = useRef(false);
-  const activeStateRef = useRef({ strikeCounter, timeLeft, questions, activeSection, activeIndices, answers, isHardLocked, isNeedsFullscreenEntry });
+  const activeStateRef = useRef({ strikeCounter, totalSecondsLeft, questions, activeSection, activeIndices, answers, isHardLocked, isNeedsFullscreenEntry });
   
   useEffect(() => {
-    activeStateRef.current = { strikeCounter, timeLeft, questions, activeSection, activeIndices, answers, isHardLocked, isNeedsFullscreenEntry };
-  }, [strikeCounter, timeLeft, questions, activeSection, activeIndices, answers, isHardLocked, isNeedsFullscreenEntry]);
+    activeStateRef.current = { strikeCounter, totalSecondsLeft, questions, activeSection, activeIndices, answers, isHardLocked, isNeedsFullscreenEntry };
+  }, [strikeCounter, totalSecondsLeft, questions, activeSection, activeIndices, answers, isHardLocked, isNeedsFullscreenEntry]);
 
   useEffect(() => {
     try {
@@ -85,6 +88,62 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
     if (hours > 0) return `${hours}h ${pad(minutes)}m ${pad(secs)}s`;
     return `${pad(minutes)}:${pad(secs)}`;
   };
+
+  // 🎯 EXACT ABSOLUTE WALL-CLOCK TICKER (Identical math to LiveMonitor)
+  useEffect(() => {
+    if (isLoading || showSuccessModal || isHardLocked || examEndTimeRef.current === null) return;
+
+    const ticker = setInterval(() => {
+      const remainingSeconds = Math.max(0, Math.floor((examEndTimeRef.current - Date.now()) / 1000));
+      setTotalSecondsLeft(remainingSeconds);
+
+      if (remainingSeconds <= 0) {
+        clearInterval(ticker);
+        handleFinalEmergencyAutoSubmit();
+      }
+    }, 1000);
+
+    return () => clearInterval(ticker);
+  }, [isLoading, showSuccessModal, isHardLocked]);
+
+  // 🎯 SUPERVISORY SYNC (Mirrors LiveMonitor's exact end time tracking)
+  useEffect(() => {
+    if (isLoading || showSuccessModal) return;
+
+    const supervisorySyncInterval = setInterval(async () => {
+      try {
+        const feedRes = await apiRequest('api/v1/student/lobby/active-feed', { method: 'GET' });
+        const feedData = await feedRes.json();
+
+        if (feedRes.status === 200 && feedData.status === 'ALREADY_SUBMITTED') {
+          setShowSuccessModal(true);
+          return;
+        }
+
+        const rawScheduledEnd = 
+          feedData.assessment_meta?.scheduled_end || 
+          feedData.assessment?.scheduled_end || 
+          feedData.session?.scheduled_end || 
+          feedData.exam?.scheduled_end || 
+          feedData.scheduled_end;
+
+        if (rawScheduledEnd) {
+          const targetTimeString = String(rawScheduledEnd).replace(' ', 'T');
+          const newEndTime = new Date(targetTimeString).getTime();
+          if (examEndTimeRef.current && newEndTime !== examEndTimeRef.current) {
+            if (newEndTime > examEndTimeRef.current) {
+              setIsExtended(true);
+            }
+            examEndTimeRef.current = newEndTime;
+          }
+        }
+      } catch (err) {
+        console.error("Supervisory sync error:", err);
+      }
+    }, 4000); // Polling at the exact same 4-second cadence as LiveMonitor
+
+    return () => clearInterval(supervisorySyncInterval);
+  }, [isLoading, showSuccessModal, assessmentId]);
 
   useEffect(() => {
     if (isLoading || showSuccessModal) return; 
@@ -118,7 +177,7 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
             answered_index: typeof activeCtx.answers[currentQ.id] === 'number' ? activeCtx.answers[currentQ.id] : null,
             theory_response: typeof activeCtx.answers[currentQ.id] === 'string' ? activeCtx.answers[currentQ.id] : null,
             security_strikes: nextCount, 
-            current_seconds_remaining: activeCtx.timeLeft,
+            current_seconds_remaining: totalSecondsLeft || 0,
             objective_progress_string: `${objCount} / ${activeCtx.questions.objective.length}`,
             theory_progress_string: `${thyCount} / ${activeCtx.questions.theory.length}`
           })
@@ -285,6 +344,9 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
           const dbQuestions = data.questions || [];
           setExamMeta(feedData.exam);
           
+          const teacherDurationMins = parseInt(feedData.exam?.duration_minutes || 30, 10);
+          const baseDurationSecs = teacherDurationMins * 60;
+          
           if (feedData.session) {
             const serverStrikes = parseInt(feedData.session.violations || 0, 10);
             localStorage.setItem(localStorageKey, serverStrikes.toString());
@@ -312,8 +374,8 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
               type: 'Objective',
               number: idx + 1,
               text: q.question_text,
-              points_weight: q.points_weight || q.pointsWeight || 2, 
-              correct_option_index: q.correct_option_index !== undefined ? q.correct_option_index : q.correctOptionIndex,
+              points_weight: q.points_weight || 2, 
+              correct_option_index: q.correct_option_index !== undefined ? q.correct_option_index : 0,
               imageUrl: processedImageUrl,
               options: typeof q.options === 'string' ? JSON.parse(q.options) : (q.options || [])
             };
@@ -333,8 +395,8 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
               type: 'Theory',
               number: idx + 1,
               text: q.question_text,
-              points_weight: q.points_weight || q.pointsWeight || 2, 
-              rubric: q.theory_rubric || q.rubric || '', 
+              points_weight: q.points_weight || 2, 
+              rubric: q.theory_rubric || '', 
               imageUrl: processedImageUrl,
               options: []
             };
@@ -342,23 +404,25 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
 
           setQuestions({ objective: objectives, theory: theories });
           
-          if (feedData.exam && feedData.exam.scheduled_end) {
-            const targetTimeString = feedData.exam.scheduled_end.replace(' ', 'T');
-            const targetEndTime = new Date(targetTimeString).getTime();
+          // 🎯 EXACT ABSOLUTE WALL-CLOCK TIME INITIALIZATION (Identical to LiveMonitor)
+          const rawScheduledEnd = 
+            feedData.assessment_meta?.scheduled_end || 
+            feedData.assessment?.scheduled_end || 
+            feedData.session?.scheduled_end || 
+            feedData.exam?.scheduled_end || 
+            feedData.scheduled_end;
 
-            if (targetEndTime > Date.now()) {
-              examEndTimeRef.current = targetEndTime;
-            } else {
-              const fallbackDuration = parseInt(feedData.exam?.duration_minutes || 30, 10);
-              examEndTimeRef.current = Date.now() + (fallbackDuration * 60 * 1000);
-            }
+          if (rawScheduledEnd) {
+            const targetTimeString = String(rawScheduledEnd).replace(' ', 'T');
+            examEndTimeRef.current = new Date(targetTimeString).getTime();
+          } else if (feedData.session && feedData.session.seconds_remaining) {
+            examEndTimeRef.current = Date.now() + (parseInt(feedData.session.seconds_remaining, 10) * 1000);
           } else {
-            const fallbackDuration = parseInt(feedData.exam?.duration_minutes || 30, 10);
-            examEndTimeRef.current = Date.now() + (fallbackDuration * 60 * 1000);
+            examEndTimeRef.current = Date.now() + (baseDurationSecs * 1000);
           }
 
-          const deltaSeconds = Math.max(0, Math.floor((examEndTimeRef.current - Date.now()) / 1000));
-          setTimeLeft(deltaSeconds);
+          const initialRemainingSecs = Math.max(0, Math.floor((examEndTimeRef.current - Date.now()) / 1000));
+          setTotalSecondsLeft(initialRemainingSecs);
 
           if (objectives.length === 0 && theories.length > 0) {
             setActiveSection('theory');
@@ -370,7 +434,7 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
         }
       } catch (error) {
         console.error(error);
-        setTimeLeft(1800); 
+        setTotalSecondsLeft(1800); 
       } finally {
         setIsLoading(false);
       }
@@ -378,23 +442,6 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
 
     if (assessmentId) fetchDatabaseExamSheet();
   }, [assessmentId]);
-
-  useEffect(() => {
-    if (!examEndTimeRef.current || isHardLocked || isLoading || showSuccessModal) return;
-
-    const interval = setInterval(() => {
-      const remainingSeconds = Math.floor((examEndTimeRef.current - Date.now()) / 1000);
-      if (remainingSeconds <= 0) {
-        setTimeLeft(0);
-        clearInterval(interval);
-        handleFinalEmergencyAutoSubmit();
-      } else {
-        setTimeLeft(remainingSeconds);
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [isHardLocked, isLoading, showSuccessModal]);
 
   const handleSelectObjectiveOption = async (optionIdx) => {
     const qId = parseInt(currentQuestion.id, 10);
@@ -411,7 +458,7 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
       answered_index: optionIdx,
       theory_response: null,
       security_strikes: parseInt(localStorage.getItem(localStorageKey), 10) || strikeCounter,
-      current_seconds_remaining: timeLeft,
+      current_seconds_remaining: totalSecondsLeft || 0,
       objective_progress_string: `${objCount} / ${questions.objective.length}`,
       theory_progress_string: `${thyCount} / ${questions.theory.length}`
     };
@@ -436,11 +483,11 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
     return examMeta?.theory_instructions || 'Answer all questions out of this section comprehensively.';
   }, [activeSection, examMeta]);
 
-  if (isLoading || timeLeft === null) {
+  if (isLoading || totalSecondsLeft === null) {
     return (
       <div className="min-h-screen bg-[#F7F5FC] flex flex-col justify-center items-center font-mono text-xs uppercase text-[#7C6B93] tracking-widest gap-2">
         <Loader2 className="w-5 h-5 animate-spin text-[#7C3AED]" />
-        Synchronizing global room countdown matrices...
+        Synchronizing examination room matrices...
       </div>
     );
   }
@@ -474,7 +521,6 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
   return (
     <div className="min-h-screen bg-[#F7F5FC] flex flex-col justify-between select-none relative w-full overflow-x-hidden text-[#2A1A63]">
       
-      {/* 🛡️ HARD LOCKOUT OVERLAY (3 STRIKES BREACHED) */}
       {isHardLocked && (
         <div className="fixed inset-0 bg-slate-950/90 z-[20000] flex flex-col justify-center items-center text-center p-6 backdrop-blur-md">
           <div className="w-full max-w-md bg-white border border-rose-200 rounded-3xl p-8 shadow-2xl space-y-6">
@@ -485,7 +531,7 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
               <h3 className="text-base font-black uppercase text-slate-900 font-sans">Workstation Locked Out</h3>
               <p className="text-xs text-rose-600 font-bold font-mono uppercase">Strikes Threshold Breached: {strikeCounter} / 3</p>
               <p className="text-xs text-slate-600 font-sans leading-relaxed pt-2">
-                Your examination session has been automatically sealed and locked due to multiple security boundary violations (fullscreen exits / focus switches). Please notify your hall supervisor.
+                Your examination session has been automatically sealed and locked due to multiple security boundary violations. Please notify your hall supervisor.
               </p>
             </div>
             <button onClick={handleFinalEmergencyAutoSubmit} className="w-full py-3.5 bg-[#22C55E] hover:bg-[#16A34A] text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-md cursor-pointer font-mono transition-all active:scale-[0.97]">
@@ -495,7 +541,6 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
         </div>
       )}
 
-      {/* ⚠️ PROCTOR WARNING MODAL (STRIKES 1 & 2) */}
       {violationType && !isHardLocked && !showSuccessModal && (
         <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs z-[9999] flex flex-col justify-center items-center text-center p-6">
           <div className="w-full max-w-sm bg-white border border-rose-200 p-6 rounded-3xl shadow-2xl space-y-4 text-left font-sans">
@@ -540,9 +585,21 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
               <span>Strikes: {strikeCounter} / 3</span>
             </div>
 
-            <div className="flex items-center gap-2 px-3.5 py-1.5 border border-white/30 rounded-2xl text-sm font-bold font-mono bg-white/20 text-white shadow-2xs">
-              <Clock className="w-4 h-4 text-white shrink-0" />
-              <span className={timeLeft <= 300 ? "text-rose-200 font-black animate-pulse" : ""}>{formatTime(timeLeft)}</span>
+            {/* 🎯 Perfectly Matched Total Wall-Clock Timer Display */}
+            <div className="flex flex-col items-end">
+              <div className={`flex items-center gap-2 px-3.5 py-1.5 border rounded-2xl text-sm font-bold font-mono bg-white/20 text-white shadow-2xs ${
+                isExtended ? 'border-purple-300 ring-1 ring-purple-300' : 'border-white/30'
+              }`}>
+                <Clock className="w-4 h-4 text-white shrink-0" />
+                <span className={totalSecondsLeft <= 300 ? "text-rose-200 font-black animate-pulse" : ""}>
+                  {formatTime(totalSecondsLeft)}
+                </span>
+              </div>
+              {isExtended && (
+                <span className="text-[9px] font-black font-mono text-purple-200 uppercase tracking-widest mt-1 animate-pulse flex items-center ">
+                  Time Extended
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -561,7 +618,7 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
         <section className="md:col-span-3 bg-[#F3EEFC] border border-[#E2D5F8] rounded-3xl p-6 flex flex-col justify-between min-h-[440px] shadow-xs text-left">
           <div>
             <div className="bg-white border border-[#E2D5F8] p-3.5 rounded-2xl text-[11px] font-sans font-semibold text-slate-700 leading-relaxed uppercase tracking-tight mb-5 shadow-2xs">
-              <span className="font-mono text-[9px] font-black text-[#7C3AED] block mb-0.5">📋 Section Directions:</span>
+              <span className="font-mono text-[9px] font-black text-[#7C3AED] block mb-0.5">Section Directions:</span>
               <SafeMathText text={currentSectionInstructions} />
             </div>
 
@@ -713,7 +770,7 @@ export default function ExamWorkspace({ student, assessmentId, onExamSubmit }) {
       )}
 
       <footer className="w-full border-t border-[#7C6B93]/20 bg-white py-2.5 text-center text-[10px] font-black text-[#7C6B93] tracking-wider font-mono uppercase px-4 shrink-0">
-        Start-rite intrnet institutional security matrix
+        Start-rite internet institutional security matrix
       </footer>
     </div>
   );

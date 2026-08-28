@@ -239,16 +239,15 @@ export default function TeacherDashboard({
   };
 
   const folderCardStyles = [
-    { bg: 'bg-[#F3EEFC]', border: 'border-[#E2D5F8]', iconColor: 'text-[#7C3AED]' }, // Purple
-    { bg: 'bg-[#FCE7EE]', border: 'border-[#F8D3DF]', iconColor: 'text-[#E11D48]' }, // Pink
-    { bg: 'bg-[#EBFBF3]', border: 'border-[#C6F6D5]', iconColor: 'text-[#059669]' }, // Green
-    { bg: 'bg-[#FFFBEB]', border: 'border-[#FEF3C7]', iconColor: 'text-[#D97706]' }  // Orange
+    { bg: 'bg-[#F3EEFC]', border: 'border-[#E2D5F8]', iconColor: 'text-[#7C3AED]' },
+    { bg: 'bg-[#FCE7EE]', border: 'border-[#F8D3DF]', iconColor: 'text-[#E11D48]' },
+    { bg: 'bg-[#EBFBF3]', border: 'border-[#C6F6D5]', iconColor: 'text-[#059669]' },
+    { bg: 'bg-[#FFFBEB]', border: 'border-[#FEF3C7]', iconColor: 'text-[#D97706]' }
   ];
 
   return (
     <div className="min-h-screen bg-[#F7F5FC] flex flex-col justify-between select-none relative text-[#2A1A63] font-sans w-full overflow-x-hidden">
       
-      {/* 🏛️ EXACT REFERENCE GRADIENT HEADER BAR */}
       <header className="w-full bg-gradient-to-r from-[#7C3AED] via-[#8B5CF6] to-[#A78BFA] px-6 py-3.5 flex justify-between items-center shadow-xs">
         <div className="flex items-center gap-3">
           {activeCourseFolder ? (
@@ -295,7 +294,7 @@ export default function TeacherDashboard({
         <main className="flex-1 max-w-7xl w-full mx-auto px-8 py-8 my-auto flex flex-col justify-start">
           <div className="mb-6 text-left">
             <h3 className="text-xs font-black text-slate-900 uppercase tracking-wide">YOUR ALLOCATED CLASSES</h3>
-            <p className="text-xs text-[#7C6B93] font-medium mt-1">Select an individual subject path folder to manage continous assesment questions or review score reports.</p>
+            <p className="text-xs text-[#7C6B93] font-medium mt-1">Select an individual subject path folder to manage continuous assessment questions or review score reports.</p>
           </div>
 
           {isLoadingFolders ? (
@@ -352,7 +351,6 @@ export default function TeacherDashboard({
       ) : (
         <main className="flex-1 w-full max-w-7xl mx-auto px-8 py-8 grid grid-cols-1 lg:grid-cols-3 gap-6 my-auto items-stretch">
           
-          {/* 🎯 EXACT MATCH LEFT CARD CONTAINER STYLING FROM REFERENCE IMAGE */}
           <section className="bg-[#F3EEFC] border border-[#E2D5F8] rounded-3xl p-6 flex flex-col justify-between shadow-xs text-left">
             <form onSubmit={handleOpenInitModal} className="space-y-4">
               <div className="flex items-center gap-2 border-b border-[#E2D5F8]/60 pb-3 mb-2">
@@ -390,7 +388,7 @@ export default function TeacherDashboard({
               </div>
 
               <div>
-                <label className="block text-[10px] font-black text-[#2A1A63] uppercase tracking-wider mb-1.5 font-mono">Staff No / Admission No</label>
+                <label className="block text-[10px] font-black text-[#2A1A63] uppercase tracking-wider mb-1.5 font-mono">Test Duration</label>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="relative">
                     <input 
@@ -419,7 +417,6 @@ export default function TeacherDashboard({
               </div>
             </form>
 
-            {/* 🎯 EXACT MATCH VIBRANT GREEN 'SET TEST' BUTTON */}
             <button 
               type="button" 
               onClick={handleOpenInitModal} 
@@ -430,17 +427,15 @@ export default function TeacherDashboard({
             </button>
           </section>
 
-          {/* 🎯 EXACT MATCH RIGHT CARD CONTAINER STYLING FROM REFERENCE IMAGE */}
           <section className="lg:col-span-2 bg-[#F3EEFC] border border-[#E2D5F8] rounded-3xl p-6 flex flex-col justify-between shadow-xs overflow-hidden text-left">
             <div className="w-full h-full flex flex-col overflow-hidden">
               
               <div className="mb-4 pb-3 border-b border-[#E2D5F8]/60 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                 <div>
-                  <span className="text-[10px] font-black text-[#7C3AED] uppercase tracking-wider font-mono">CONTINOUS ASSESSMENT DIISTR IBUTION MATRIX</span>
+                  <span className="text-[10px] font-black text-[#7C3AED] uppercase tracking-wider font-mono">CONTINUOUS ASSESSMENT DISTRIBUTION MATRIX</span>
                   <h3 className="text-base font-black text-slate-900 uppercase tracking-tight mt-0.5">{activeCourseFolder.name} ASSESSMENT INDEX</h3>
                 </div>
 
-                {/* 🎯 EXACT MATCH VIBRANT GREEN 'COURSE MARKS SPREADSHEET' BUTTON */}
                 <button 
                   onClick={() => onNavigateToGradebook(activeCourseFolder)}
                   className="px-4 py-2.5 bg-[#22C55E] hover:bg-[#16A34A] text-white text-xs font-black uppercase tracking-wider rounded-xl flex items-center gap-1.5 shadow-md transition-all active:scale-[0.97] cursor-pointer"
@@ -603,10 +598,6 @@ export default function TeacherDashboard({
         </div>
       </div>
 
-      {/* <footer className="w-full border-t border-[#9A87A9]/20 bg-white py-2.5 text-center text-[10px] font-black text-[#7C6B93] tracking-wider font-mono uppercase shrink-0 px-4">
-        Start-rite intrnet institutional security matrix
-      </footer> */}
-
     </div>
   );
-} 
+}

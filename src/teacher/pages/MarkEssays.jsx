@@ -641,50 +641,95 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
 
                 <div className="flex-1 space-y-4 overflow-y-auto pr-1 pb-2">
 
-                  {/* ACCORDION 1: SECTION A (OBJECTIVES AUDITOR) */}
-                  <div className="border border-[#E2D5F8] rounded-2xl overflow-hidden bg-white shadow-2xs">
-                    <button 
-                      type="button"
-                      onClick={() => setIsObjDropdownOpen(!isObjDropdownOpen)}
-                      className="w-full px-4 py-3 bg-white flex justify-between items-center border-b border-[#E2D5F8]/60 hover:bg-[#FAF9FA] transition-all text-left cursor-pointer"
-                    >
-                      <div className="flex items-center gap-2">
-                        <HelpCircle className="w-4 h-4 text-[#7C3AED]" />
-                        <div>
-                          <span className="text-xs font-black text-slate-900 uppercase">Section A: Objective Answers Registry</span>
-                          <span className="block text-[9px] font-black text-[#7C6B93] uppercase mt-0.5 font-mono">Automated Machine Graded Score log sheet</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-[10px] font-mono font-black text-slate-800 bg-[#FAF9FA] border border-[#E2D5F8] px-2 py-0.5 rounded-xl">
-                          {currentStudent.objScore} / {currentStudent.maxObj} Pts
-                        </span>
-                        {isObjDropdownOpen ? <ChevronUp className="w-4 h-4 text-[#7C6B93]" /> : <ChevronDown className="w-4 h-4 text-[#7C3AED]" />}
-                      </div>
-                    </button>
+                 {/* ACCORDION 1: SECTION A (OBJECTIVES AUDITOR) */}
+<div className="border border-[#E2D5F8] rounded-2xl overflow-hidden bg-white shadow-2xs">
+  <button 
+    type="button"
+    onClick={() => setIsObjDropdownOpen(!isObjDropdownOpen)}
+    className="w-full px-4 py-3 bg-white flex justify-between items-center border-b border-[#E2D5F8]/60 hover:bg-[#FAF9FA] transition-all text-left cursor-pointer"
+  >
+    <div className="flex items-center gap-2">
+      <HelpCircle className="w-4 h-4 text-[#7C3AED]" />
+      <div>
+        <span className="text-xs font-black text-slate-900 uppercase">Section A: Objective Answers Registry</span>
+        <span className="block text-[9px] font-black text-[#7C6B93] uppercase mt-0.5 font-mono">Automated Machine Graded Score log sheet</span>
+      </div>
+    </div>
+    <div className="flex items-center gap-3">
+      <span className="text-[10px] font-mono font-black text-slate-800 bg-[#FAF9FA] border border-[#E2D5F8] px-2 py-0.5 rounded-xl">
+        {currentStudent.objScore} / {currentStudent.maxObj} Pts
+      </span>
+      {isObjDropdownOpen ? <ChevronUp className="w-4 h-4 text-[#7C6B93]" /> : <ChevronDown className="w-4 h-4 text-[#7C3AED]" />}
+    </div>
+  </button>
 
-                    {isObjDropdownOpen && (
-                      <div className="p-4 bg-[#FAF9FA]/40 border-t border-[#E2D5F8]/60 space-y-3 max-h-[300px] overflow-y-auto">
-                        {!currentStudent.isSubmitted && currentStudent.objectiveAnswers.length === 0 ? (
-                          <p className="text-center font-mono text-[10px] text-[#C62927] py-4 font-bold uppercase">Candidate did not write or submit objective exam paper.</p>
-                        ) : (
-                          currentStudent.objectiveAnswers?.map((obj, oIdx) => (
-                            <div key={obj.qId || oIdx} className="p-3 border border-[#E2D5F8] bg-white rounded-xl space-y-2 text-left shadow-2xs">
-                              <div className="flex justify-between items-center font-mono text-[9px] font-black text-[#7C6B93] border-b border-[#E2D5F8]/60 pb-1 uppercase">
-                                <span>Objective Item {obj.number}</span>
-                                <span className={obj.isCorrect ? 'text-emerald-700 font-black' : 'text-[#C62927] font-black'}>
-                                  {obj.isCorrect ? `+${obj.maxScore} / ${obj.maxScore} Pts` : `0.00 / ${obj.maxScore} Pts`}
-                                </span>
-                              </div>
-                              <p className="text-xs font-bold text-slate-900 leading-relaxed">
-                                <SafeMathText text={obj.prompt} />
-                              </p>
-                            </div>
-                          ))
-                        )}
+  {isObjDropdownOpen && (
+    <div className="p-4 bg-[#FAF9FA]/40 border-t border-[#E2D5F8]/60 space-y-4 max-h-[350px] overflow-y-auto">
+      {!currentStudent.isSubmitted && currentStudent.objectiveAnswers.length === 0 ? (
+        <p className="text-center font-mono text-[10px] text-[#C62927] py-4 font-bold uppercase">Candidate did not write or submit objective exam paper.</p>
+      ) : (
+        currentStudent.objectiveAnswers?.map((obj, oIdx) => {
+          const studentChoice = obj.studentSelectedIndex;
+          const correctChoice = obj.correctOptionIndex;
+
+          return (
+            <div key={obj.qId || oIdx} className="p-3.5 border border-[#E2D5F8] bg-white rounded-2xl space-y-2.5 text-left shadow-2xs">
+              <div className="flex justify-between items-center font-mono text-[9px] font-black text-[#7C6B93] border-b border-[#E2D5F8]/60 pb-1.5 uppercase">
+                <span>Objective Item {obj.number}</span>
+                <span className={obj.isCorrect ? 'text-emerald-700 font-black' : 'text-[#C62927] font-black'}>
+                  {obj.isCorrect ? `+${obj.maxScore} / ${obj.maxScore} Pts` : `0.00 / ${obj.maxScore} Pts`}
+                </span>
+              </div>
+
+              <p className="text-xs font-bold text-slate-900 leading-relaxed">
+                <SafeMathText text={obj.prompt} />
+              </p>
+
+              {/* Options List Display */}
+              <div className="space-y-1.5 pt-1">
+                {obj.options && obj.options.length > 0 ? (
+                  obj.options.map((optText, optIdx) => {
+                    const isSelectedByStudent = studentChoice === optIdx;
+                    const isTheCorrectOption = correctChoice === optIdx;
+
+                    let optionStyling = 'bg-slate-50 border-slate-200 text-slate-700';
+                    let badgeLabel = null;
+
+                    if (isTheCorrectOption && isSelectedByStudent) {
+                      optionStyling = 'bg-emerald-50 border-emerald-300 text-emerald-900 font-bold';
+                      badgeLabel = <span className="text-[9px] font-mono bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded-lg font-black uppercase">Candidate Correct Choice ✓</span>;
+                    } else if (isTheCorrectOption) {
+                      optionStyling = 'bg-emerald-50/60 border-emerald-200 text-emerald-800 font-bold';
+                      badgeLabel = <span className="text-[9px] font-mono bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-lg font-black uppercase">Correct Answer</span>;
+                    } else if (isSelectedByStudent) {
+                      optionStyling = 'bg-rose-50 border-rose-300 text-rose-900 font-bold';
+                      badgeLabel = <span className="text-[9px] font-mono bg-rose-200 text-rose-800 px-2 py-0.5 rounded-lg font-black uppercase">Candidate Choice ✗</span>;
+                    }
+
+                    return (
+                      <div 
+                        key={optIdx} 
+                        className={`px-3 py-2 border rounded-xl text-xs flex items-center justify-between transition-all ${optionStyling}`}
+                      >
+                        <span className="font-sans">
+                          <strong className="font-mono mr-1.5">{String.fromCharCode(65 + optIdx)})</strong> 
+                          <SafeMathText text={typeof optText === 'object' ? optText.text : optText} />
+                        </span>
+                        {badgeLabel}
                       </div>
-                    )}
-                  </div>
+                    );
+                  })
+                ) : (
+                  <p className="text-[10px] font-mono text-slate-500 italic">No option variations registered for this objective item.</p>
+                )}
+              </div>
+            </div>
+          );
+        })
+      )}
+    </div>
+  )}
+</div>
 
                   {/* ACCORDION 2: SECTION B (MANUAL INPUT GRADING MATRIX) */}
                   <div className="border border-[#E2D5F8] rounded-2xl overflow-hidden bg-white shadow-2xs">

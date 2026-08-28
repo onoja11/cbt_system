@@ -2,20 +2,30 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, FileSpreadsheet, Loader2, Search } from 'lucide-react';
 import { apiRequest } from '../../core/api';
 import Logo from '../../shared/Logo';
+import { calculateNigerianGrade, getGradeBadgeStyle } from '../../core/gradingUtils'; // 👈 Imported shared grading logic
 
 export default function GradebookMatrix({ activeFolderContext, onNavigateBack }) {
   const [gradebookRows, setGradebookRows] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // 🏛️ STARTRITE SCHOOLS COMPREHENSIVE ASSESSMENT BOUNDARIES
+  // 🏛️ STANDARD NIGERIAN ACADEMIC GRADING & REMARKS MAPPING
   const computeSchoolGradeMetrics = (totalScore) => {
     const score = parseFloat(totalScore || 0);
-    if (score >= 75.00) return { grade: 'A', remarks: 'EXCELLENT', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
-    if (score >= 65.00) return { grade: 'B', remarks: 'VERY GOOD', color: 'text-blue-700 bg-blue-50 border-blue-200' };
-    if (score >= 50.00) return { grade: 'C', remarks: 'GOOD', color: 'text-indigo-700 bg-indigo-50 border-indigo-200' };
-    if (score >= 40.00) return { grade: 'D', remarks: 'PASS', color: 'text-orange-700 bg-orange-50 border-orange-200' };
-    return { grade: 'F', remarks: 'FAIL', color: 'text-[#C62927] bg-rose-50 border-rose-200 font-black' };
+    const grade = calculateNigerianGrade(score, 100);
+    
+    let remarks = 'FAIL';
+    if (grade === 'A') remarks = 'EXCELLENT';
+    else if (grade === 'B') remarks = 'VERY GOOD';
+    else if (grade === 'C') remarks = 'GOOD';
+    else if (grade === 'D') remarks = 'FAIR';
+    else if (grade === 'E') remarks = 'PASS';
+
+    return { 
+      grade, 
+      remarks, 
+      color: getGradeBadgeStyle(grade) 
+    };
   };
 
   useEffect(() => {
@@ -252,7 +262,7 @@ export default function GradebookMatrix({ activeFolderContext, onNavigateBack })
       </main>
 
       <footer className="w-full border-t border-[#7C6B93]/20 bg-white py-2.5 text-center text-[10px] font-black text-[#7C6B93] tracking-wider font-mono uppercase shrink-0 px-4">
-        Start-rite intrnet institutional security matrix
+        Start-rite internet institutional security matrix
       </footer>
 
     </div>

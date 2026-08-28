@@ -9,7 +9,7 @@ import { apiRequest } from '../../core/api';
 import Logo from '../../shared/Logo';
 
 export default function AdminExamAuditCenter({ onNavigateBack }) {
-  const [activeTab, setActiveTab] = useState('all'); // 'all', 'ready_to_grade', 'completed'
+  const [activeTab, setActiveTab] = useState('all'); 
   const [searchQuery, setSearchQuery] = useState('');
   
   // Advanced Filter States
@@ -189,7 +189,7 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
   return (
     <div className="min-h-screen bg-[#F7F5FC] flex flex-col justify-between select-none text-[#2A1A63] font-sans w-full overflow-x-hidden">
       
-      {/* Header Banner - Fully Responsive */}
+      {/* Header Banner */}
       <header className="w-full bg-gradient-to-r from-[#7C3AED] via-[#8B5CF6] to-[#A78BFA] px-4 sm:px-6 py-3.5 flex flex-col lg:flex-row justify-between items-center gap-3 shadow-xs sticky top-0 z-40 shrink-0">
         <div className="flex items-center gap-3 w-full lg:w-auto justify-between lg:justify-start">
           <div className="flex items-center gap-2.5">
@@ -209,7 +209,6 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
           </div>
         </div>
 
-        {/* Tab Filters - Scrollable on mobile */}
         <div className="flex bg-white/20 p-1 rounded-2xl border border-white/30 font-mono text-[10px] font-bold gap-1 w-full lg:w-auto justify-start sm:justify-center overflow-x-auto">
           <button 
             onClick={() => { setActiveTab('all'); setCurrentPage(1); }}
@@ -238,7 +237,7 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
         </div>
       </header>
 
-      {/* Advanced Control Filter Toolbar - Responsive Stack */}
+      {/* Advanced Control Filter Toolbar */}
       <div className="w-full bg-white border-b border-[#E2D5F8] px-4 sm:px-8 py-3 flex flex-col md:flex-row items-center justify-between gap-3 shrink-0 shadow-2xs">
         <div className="relative w-full md:max-w-xs bg-white border border-[#E2D5F8] rounded-2xl shadow-2xs overflow-hidden">
           <Search className="w-4 h-4 text-[#7C6B93] absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -251,7 +250,6 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
           />
         </div>
 
-        {/* Dropdown Filters Grid */}
         <div className="grid grid-cols-3 gap-2 w-full md:w-auto font-mono text-[10px]">
           <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
             <span className="text-[#7C6B93] font-black uppercase text-[9px] sm:text-[10px]">Arm:</span>
@@ -363,7 +361,6 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
           )}
         </div>
 
-        {/* 📄 Pagination Footer Bar */}
         {totalRecords > 0 && (
           <div className="w-full bg-white border border-[#E2D5F8] px-4 sm:px-6 py-3 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 font-mono text-[11px] shadow-2xs mt-4 shrink-0">
             <span className="text-[#7C6B93] font-bold uppercase text-center sm:text-left">
@@ -395,7 +392,7 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
         )}
       </main>
 
-      {/* 🎯 EDIT STATUS MODAL */}
+      {/* EDIT STATUS MODAL */}
       {editingAssessment && (
         <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs z-[60000] flex items-center justify-center p-4">
           <div className="bg-white border border-[#E2D5F8] w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden font-sans text-left animate-fadeIn p-5 sm:p-6 space-y-4">
@@ -430,7 +427,7 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
         </div>
       )}
 
-      {/* 🎯 MASTER DEEP INSPECTION & AUDIT MODAL */}
+      {/* MASTER DEEP INSPECTION & AUDIT MODAL */}
       {inspectingAssessment && (
         <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs z-[50000] flex items-center justify-center p-3 sm:p-4">
           <div className="bg-white border border-[#E2D5F8] w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden font-sans text-left max-h-[95vh] sm:max-h-[90vh] flex flex-col animate-fadeIn">
@@ -465,7 +462,6 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
                     </div>
                   )}
 
-                  {/* 📊 Statistical Analytics Ribbon - Responsive Grid */}
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 font-mono">
                     <div className="p-3 sm:p-4 bg-[#F3EEFC] border border-[#E2D5F8] rounded-2xl shadow-2xs">
                       <span className="text-[9px] sm:text-[10px] font-sans font-bold text-[#7C6B93] uppercase block tracking-wider">Class Average Score</span>
@@ -512,19 +508,19 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
                     </div>
                   </div>
 
-                  {/* 👥 Candidate Roster */}
+                  {/* Candidate Roster */}
                   <div className="space-y-3">
                     <h4 className="text-xs font-black uppercase text-slate-900 font-mono tracking-wider">Candidate Participation & Reopen Console</h4>
                     
                     <div className="bg-[#F3EEFC] border border-[#E2D5F8] rounded-3xl overflow-hidden max-h-72 sm:max-h-80 overflow-y-auto shadow-xs">
-                      <table className="w-full text-left border-collapse font-mono text-[11px] min-w-[650px]">
+                      <table className="w-full text-left border-collapse font-mono text-[11px] min-w-[700px]">
                         <thead>
                           <tr className="bg-[#7C3AED] text-white font-black uppercase text-[9px] tracking-wider border-b border-[#E2D5F8] sticky top-0 z-10">
                             <th className="p-3.5 sm:p-4 pl-6 bg-[#7C3AED]">Admission No</th>
                             <th className="p-3.5 sm:p-4 font-sans bg-[#7C3AED]">Student Name</th>
                             <th className="p-3.5 sm:p-4 text-center bg-[#7C3AED]/90">Participation Status</th>
                             <th className="p-3.5 sm:p-4 text-center bg-[#7C3AED]/80">Score Awarded</th>
-                            <th className="p-3.5 sm:p-4 text-center pr-6 font-sans bg-[#7C3AED]">Supervisor Control Action</th>
+                            <th className="p-3.5 sm:p-4 text-center pr-6 font-sans bg-[#7C3AED]">Supervisor Controls</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[#E2D5F8] uppercase font-bold text-slate-700 bg-white">
@@ -532,6 +528,9 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
                             const isHighlighted = highlightedStudentId === student.student_profile_id;
                             const isTop = auditDetails.stats.highest_student_id === student.student_profile_id;
                             const isLow = auditDetails.stats.lowest_student_id === student.student_profile_id;
+                            
+                            // 🎯 Check if exam is still in progress (Prevents showing reopen button during exam)
+                            const isExamInProgress = inspectingAssessment.status === 'Exam in Progress';
 
                             return (
                               <tr 
@@ -560,14 +559,17 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
                                   {inspectingAssessment.status === 'Graded' ? `${student.score} / ${auditDetails.stats.max_possible_score}` : 'Pending Grade'}
                                 </td>
                                 <td className="p-3.5 sm:p-4 text-center pr-6 font-sans">
-                                  {!student.has_submitted && (
-                                    <button
-                                      onClick={() => handleReopenStudentSession(student.student_profile_id)}
-                                      className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-mono font-bold uppercase rounded-xl transition-all inline-flex items-center gap-1.5 cursor-pointer shadow-md active:scale-[0.97]"
-                                    >
-                                      <RotateCcw className="w-3.5 h-3.5 shrink-0" /> Reopen
-                                    </button>
-                                  )}
+                                  <div className="flex items-center justify-center gap-2">
+                                    {!student.has_submitted && !isExamInProgress && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleReopenStudentSession(student.student_profile_id)}
+                                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-mono font-bold uppercase rounded-xl transition-all inline-flex items-center gap-1 cursor-pointer shadow-md"
+                                      >
+                                        <RotateCcw className="w-3 h-3 shrink-0" /> Reopen
+                                      </button>
+                                    )}
+                                  </div>
                                 </td>
                               </tr>
                             );

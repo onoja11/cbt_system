@@ -5,10 +5,11 @@ import {
 } from 'lucide-react';
 import { apiRequest } from '../../core/api';
 import Logo from '../../shared/Logo';
+import { calculateNigerianGrade, getGradeBadgeStyle } from '../../core/gradingUtils'; // 👈 Imported shared grading component logic
 
 export default function AdminClassesDirectory({ onNavigateBack }) {
-  const [currentLevel, setCurrentLevel] = useState('folders'); // 'folders' or 'class_details'
-  const [activeTab, setActiveTab] = useState('subjects'); // 'subjects' or 'gradebook'
+  const [currentLevel, setCurrentLevel] = useState('folders'); 
+  const [activeTab, setActiveTab] = useState('subjects'); 
   const [isLoading, setIsLoading] = useState(true);
 
   const [classGroups, setClassGroups] = useState([]);
@@ -16,10 +17,8 @@ export default function AdminClassesDirectory({ onNavigateBack }) {
   const [classSubjects, setClassSubjects] = useState([]);
   const [classGradebook, setClassGradebook] = useState([]);
   
-  // 🔍 Universal Search Query State
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Detailed Student Modal State
   const [selectedStudentDetail, setSelectedStudentDetail] = useState(null);
   const [isStudentLoading, setIsStudentLoading] = useState(false);
 
@@ -130,7 +129,6 @@ export default function AdminClassesDirectory({ onNavigateBack }) {
   return (
     <div className="min-h-screen bg-[#F7F5FC] flex flex-col justify-between select-none text-[#2A1A63] font-sans w-full overflow-x-hidden">
 
-      {/* Header Bar - Fully Responsive */}
       <header className="w-full bg-gradient-to-r from-[#7C3AED] via-[#8B5CF6] to-[#A78BFA] px-4 sm:px-6 py-3.5 flex flex-col sm:flex-row justify-between items-center gap-3 shadow-xs sticky top-0 z-40 shrink-0">
         <div className="flex items-center gap-3 w-full sm:w-auto">
           <button 
@@ -176,7 +174,6 @@ export default function AdminClassesDirectory({ onNavigateBack }) {
         )}
       </header>
 
-      {/* LEVEL 1: FOLDERS GRID WITH SEARCH BAR */}
       {currentLevel === 'folders' && (
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-8 py-6 my-auto flex flex-col justify-start space-y-4">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 w-full">
@@ -245,7 +242,6 @@ export default function AdminClassesDirectory({ onNavigateBack }) {
         </main>
       )}
 
-      {/* LEVEL 2: CLASS DETAILS WITH SEARCH BAR */}
       {currentLevel === 'class_details' && (
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-8 py-6 my-auto flex flex-col justify-start space-y-4">
           
@@ -265,7 +261,6 @@ export default function AdminClassesDirectory({ onNavigateBack }) {
             </div>
           </div>
 
-          {/* TAB 1: SUBJECTS & TEACHERS */}
           {activeTab === 'subjects' && (
             <div className="space-y-4 animate-fadeIn">
               {filteredSubjects.length === 0 ? (
@@ -307,7 +302,6 @@ export default function AdminClassesDirectory({ onNavigateBack }) {
             </div>
           )}
 
-          {/* TAB 2: GRADEBOOK MATRIX */}
           {activeTab === 'gradebook' && (
             <div className="space-y-4 animate-fadeIn">
               {filteredGradebook.length === 0 ? (
@@ -361,7 +355,7 @@ export default function AdminClassesDirectory({ onNavigateBack }) {
         </main>
       )}
 
-      {/* 🎯 DETAILED STUDENT RESULT MODAL - Fully Responsive */}
+      {/* 🎯 DETAILED STUDENT TRANSCRIPT MODAL USING STANDARDIZED NIGERIAN GRADING */}
       {(selectedStudentDetail || isStudentLoading) && (
         <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs z-[50000] flex items-center justify-center p-3 sm:p-4">
           <div className="bg-white border border-[#E2D5F8] w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden font-sans text-left max-h-[95vh] sm:max-h-[90vh] flex flex-col animate-fadeIn">
@@ -429,27 +423,26 @@ export default function AdminClassesDirectory({ onNavigateBack }) {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-[#E2D5F8] uppercase font-bold text-slate-700 bg-white">
-                            {selectedStudentDetail.subjects.map((sub, sIdx) => (
-                              <tr key={sIdx} className="hover:bg-[#FAF9FA] transition-colors">
-                                <td className="p-3.5 sm:p-4 pl-6 font-sans font-black text-slate-950 text-xs truncate max-w-[140px] sm:max-w-none">{sub.subject_name}</td>
-                                <td className="p-3.5 sm:p-4 text-[10px] text-[#7C6B93] font-mono truncate max-w-[120px] sm:max-w-none">{sub.teacher_name}</td>
-                                <td className="p-3.5 sm:p-4 text-center text-[#7C6B93]">{sub.ca1}</td>
-                                <td className="p-3.5 sm:p-4 text-center text-[#7C6B93]">{sub.ca2}</td>
-                                <td className="p-3.5 sm:p-4 text-center text-[#7C6B93]">{sub.ca3}</td>
-                                <td className="p-3.5 sm:p-4 text-center text-[#7C6B93]">{sub.exam}</td>
-                                <td className="p-3.5 sm:p-4 text-center bg-[#F7F5FC] font-black text-slate-950 border-x border-[#E2D5F8]">{sub.total}</td>
-                                <td className="p-3.5 sm:p-4 text-center pr-6">
-                                  <span className={`px-2.5 py-1 rounded-lg font-bold text-xs border inline-block ${
-                                    sub.grade === 'A' ? 'text-emerald-700 bg-emerald-50 border-emerald-200' :
-                                    sub.grade === 'B' ? 'text-blue-700 bg-blue-50 border-blue-200' :
-                                    sub.grade === 'C' ? 'text-indigo-700 bg-indigo-50 border-indigo-200' : 
-                                    sub.grade === 'D' ? 'text-orange-700 bg-orange-50 border-orange-200' : 'text-[#C62927] bg-rose-50 border-rose-200 font-black'
-                                  }`}>
-                                    {sub.grade}
-                                  </span>
-                                </td>
-                              </tr>
-                            ))}
+                            {selectedStudentDetail.subjects.map((sub, sIdx) => {
+                              const standardGrade = calculateNigerianGrade(sub.total, sub.max_score || 100);
+
+                              return (
+                                <tr key={sIdx} className="hover:bg-[#FAF9FA] transition-colors">
+                                  <td className="p-3.5 sm:p-4 pl-6 font-sans font-black text-slate-950 text-xs truncate max-w-[140px] sm:max-w-none">{sub.subject_name}</td>
+                                  <td className="p-3.5 sm:p-4 text-[10px] text-[#7C6B93] font-mono truncate max-w-[120px] sm:max-w-none">{sub.teacher_name}</td>
+                                  <td className="p-3.5 sm:p-4 text-center text-[#7C6B93]">{sub.ca1}</td>
+                                  <td className="p-3.5 sm:p-4 text-center text-[#7C6B93]">{sub.ca2}</td>
+                                  <td className="p-3.5 sm:p-4 text-center text-[#7C6B93]">{sub.ca3}</td>
+                                  <td className="p-3.5 sm:p-4 text-center text-[#7C6B93]">{sub.exam}</td>
+                                  <td className="p-3.5 sm:p-4 text-center bg-[#F7F5FC] font-black text-slate-950 border-x border-[#E2D5F8]">{sub.total}</td>
+                                  <td className="p-3.5 sm:p-4 text-center pr-6">
+                                    <span className={`px-2.5 py-1 rounded-lg font-bold text-xs border inline-block ${getGradeBadgeStyle(standardGrade)}`}>
+                                      {standardGrade}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
