@@ -5,15 +5,20 @@ import {
 } from 'lucide-react';
 import { apiRequest } from '../../core/api';
 import Logo from '../../shared/Logo';
-import { calculateNigerianGrade, getGradeBadgeStyle } from '../../core/gradingUtils'; // 👈 Imported shared grading component logic
+import { calculateNigerianGrade, getGradeBadgeStyle } from '../../core/gradingUtils';
+import GlobalTermFilterBar from '../components/GlobalTermFilterBar';
 
 export default function AdminClassesDirectory({ onNavigateBack }) {
-  const [currentLevel, setCurrentLevel] = useState('folders'); 
-  const [activeTab, setActiveTab] = useState('subjects'); 
+  // 🔄 Initialize state from localStorage so page refreshes don't wipe your view position
+  const [currentLevel, setCurrentLevel] = useState(() => localStorage.getItem('admin_dir_level') || 'folders'); 
+  const [activeTab, setActiveTab] = useState(() => localStorage.getItem('admin_dir_tab') || 'subjects'); 
   const [isLoading, setIsLoading] = useState(true);
 
   const [classGroups, setClassGroups] = useState([]);
-  const [selectedClass, setSelectedClass] = useState(null);
+  const [selectedClass, setSelectedClass] = useState(() => {
+    const saved = localStorage.getItem('admin_dir_selected_class');
+    return saved ? JSON.parse(saved) : null;
+  });
   const [classSubjects, setClassSubjects] = useState([]);
   const [classGradebook, setClassGradebook] = useState([]);
   
@@ -26,13 +31,33 @@ export default function AdminClassesDirectory({ onNavigateBack }) {
     loadInitialDirectoryData();
   }, []);
 
+  // 🔄 Sync state persistence whenever user navigates or changes tabs
+  useEffect(() => {
+    localStorage.setItem('admin_dir_level', currentLevel);
+    localStorage.setItem('admin_dir_tab', activeTab);
+    if (selectedClass) {
+      localStorage.setItem('admin_dir_selected_class', JSON.stringify(selectedClass));
+    } else {
+      localStorage.removeItem('admin_dir_selected_class');
+    }
+  }, [currentLevel, activeTab, selectedClass]);
+
   const loadInitialDirectoryData = async () => {
     setIsLoading(true);
     try {
       const classRes = await apiRequest('api/v1/admin/directory/class-arms', { method: 'GET' });
       if (classRes.ok) {
         const classPayload = await classRes.json();
-        setClassGroups(classPayload.class_arms || []);
+        const fetchedArms = classPayload.class_arms || [];
+        setClassGroups(fetchedArms);
+
+        // 🔄 If we were viewing a class before refreshing, automatically reload its details
+        const savedClassJson = localStorage.getItem('admin_dir_selected_class');
+        if (savedClassJson && currentLevel === 'class_details') {
+          const parsedClass = JSON.parse(savedClassJson);
+          const foundArm = fetchedArms.find(a => a.id === parsedClass.id) || parsedClass;
+          await reloadClassMatrixSilently(foundArm);
+        }
       }
     } catch (err) {
       console.error("❌ [DIRECTORY REGISTRY FAULT]:", err);
@@ -41,12 +66,39 @@ export default function AdminClassesDirectory({ onNavigateBack }) {
     }
   };
 
+  const reloadClassMatrixSilently = async (classArm) => {
+    try {
+      const activeSession = localStorage.getItem('admin_filter_session');
+      const activeTerm = localStorage.getItem('admin_filter_term');
+      let queryParams = '';
+      if (activeSession && activeTerm) {
+        queryParams = `?session=${encodeURIComponent(activeSession)}&term=${encodeURIComponent(activeTerm)}`;
+      }
+
+      const res = await apiRequest(`api/v1/admin/directory/class-arms/${classArm.id}/comprehensive-matrix${queryParams}`, { method: 'GET' });
+      if (res.ok) {
+        const payload = await res.json();
+        setClassSubjects(payload.subjects || []);
+        setClassGradebook(payload.gradebook_matrix || []);
+      }
+    } catch (err) {
+      console.error("❌ [SILENT MATRIX RELOAD FAULT]:", err);
+    }
+  };
+
   const handleSelectClassArm = async (classArm) => {
     setSelectedClass(classArm);
     setIsLoading(true);
     setSearchQuery('');
     try {
-      const res = await apiRequest(`api/v1/admin/directory/class-arms/${classArm.id}/comprehensive-matrix`, { method: 'GET' });
+      const activeSession = localStorage.getItem('admin_filter_session');
+      const activeTerm = localStorage.getItem('admin_filter_term');
+      let queryParams = '';
+      if (activeSession && activeTerm) {
+        queryParams = `?session=${encodeURIComponent(activeSession)}&term=${encodeURIComponent(activeTerm)}`;
+      }
+
+      const res = await apiRequest(`api/v1/admin/directory/class-arms/${classArm.id}/comprehensive-matrix${queryParams}`, { method: 'GET' });
       if (res.ok) {
         const payload = await res.json();
         setClassSubjects(payload.subjects || []);
@@ -64,7 +116,14 @@ export default function AdminClassesDirectory({ onNavigateBack }) {
   const handleInspectStudent = async (studentId) => {
     setIsStudentLoading(true);
     try {
-      const res = await apiRequest(`api/v1/admin/directory/students/${studentId}/detailed-transcript`, { method: 'GET' });
+      const activeSession = localStorage.getItem('admin_filter_session');
+      const activeTerm = localStorage.getItem('admin_filter_term');
+      let queryParams = '';
+      if (activeSession && activeTerm) {
+        queryParams = `?session=${encodeURIComponent(activeSession)}&term=${encodeURIComponent(activeTerm)}`;
+      }
+
+      const res = await apiRequest(`api/v1/admin/directory/students/${studentId}/detailed-transcript${queryParams}`, { method: 'GET' });
       if (res.ok) {
         const payload = await res.json();
         if (payload.status === 'SUCCESS') {
@@ -85,6 +144,8 @@ export default function AdminClassesDirectory({ onNavigateBack }) {
       setClassSubjects([]);
       setClassGradebook([]);
       setSearchQuery('');
+      localStorage.removeItem('admin_dir_level');
+      localStorage.removeItem('admin_dir_selected_class');
     }
   };
 
@@ -245,6 +306,8 @@ export default function AdminClassesDirectory({ onNavigateBack }) {
       {currentLevel === 'class_details' && (
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-8 py-6 my-auto flex flex-col justify-start space-y-4">
           
+          <GlobalTermFilterBar />
+
           <div className="w-full bg-white border border-[#E2D5F8] px-4 sm:px-5 py-3 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 shadow-2xs shrink-0">
             <div className="relative w-full sm:max-w-md bg-white border border-[#E2D5F8] rounded-xl shadow-2xs overflow-hidden">
               <Search className="w-4 h-4 text-[#7C6B93] absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -355,7 +418,7 @@ export default function AdminClassesDirectory({ onNavigateBack }) {
         </main>
       )}
 
-      {/* 🎯 DETAILED STUDENT TRANSCRIPT MODAL USING STANDARDIZED NIGERIAN GRADING */}
+      {/* 🎯 DETAILED STUDENT TRANSCRIPT MODAL */}
       {(selectedStudentDetail || isStudentLoading) && (
         <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs z-[50000] flex items-center justify-center p-3 sm:p-4">
           <div className="bg-white border border-[#E2D5F8] w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden font-sans text-left max-h-[95vh] sm:max-h-[90vh] flex flex-col animate-fadeIn">

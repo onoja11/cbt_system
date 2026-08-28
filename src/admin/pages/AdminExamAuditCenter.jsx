@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { apiRequest } from '../../core/api';
 import Logo from '../../shared/Logo';
+import GlobalTermFilterBar from '../components/GlobalTermFilterBar'; // 👈 Global Term Filter
 
 export default function AdminExamAuditCenter({ onNavigateBack }) {
   const [activeTab, setActiveTab] = useState('all'); 
@@ -43,7 +44,14 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
 
   const fetchMasterAssessments = async (page = 1) => {
     try {
-      const res = await apiRequest(`api/v1/admin/audit/assessments-comprehensive?page=${page}&per_page=${itemsPerPage}`, { method: 'GET' });
+      const activeSession = localStorage.getItem('admin_filter_session');
+      const activeTerm = localStorage.getItem('admin_filter_term');
+      let queryParams = `?page=${page}&per_page=${itemsPerPage}`;
+      if (activeSession && activeTerm) {
+        queryParams += `&session=${encodeURIComponent(activeSession)}&term=${encodeURIComponent(activeTerm)}`;
+      }
+
+      const res = await apiRequest(`api/v1/admin/audit/assessments-comprehensive${queryParams}`, { method: 'GET' });
       if (res.ok) {
         const payload = await res.json();
         if (payload.status === 'SUCCESS') {
@@ -288,7 +296,11 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
 
       {/* Main Content Ledger */}
       <main className="flex-1 bg-[#F7F5FC] px-4 sm:px-8 py-5 overflow-y-auto w-full flex flex-col justify-between">
-        <div className="w-full">
+        <div className="w-full space-y-4">
+          
+          {/* 🌍 GLOBAL TERM FILTER BAR */}
+          <GlobalTermFilterBar />
+
           {filteredAssessments.length === 0 ? (
             <div className="h-full flex flex-col justify-center items-center text-[#7C6B93] p-6 text-center bg-[#F3EEFC] border border-dashed border-[#E2D5F8] rounded-3xl py-16 shadow-xs max-w-md mx-auto my-auto">
               <BookOpen className="w-10 h-10 text-[#7C3AED]/40 stroke-[1.5] mb-3" />
@@ -528,8 +540,6 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
                             const isHighlighted = highlightedStudentId === student.student_profile_id;
                             const isTop = auditDetails.stats.highest_student_id === student.student_profile_id;
                             const isLow = auditDetails.stats.lowest_student_id === student.student_profile_id;
-                            
-                            // 🎯 Check if exam is still in progress (Prevents showing reopen button during exam)
                             const isExamInProgress = inspectingAssessment.status === 'Exam in Progress';
 
                             return (
