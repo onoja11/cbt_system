@@ -106,7 +106,7 @@ export default function AdminTermSettings() {
                     </div>
                 </div>
 
-                {/* Network Status Toggle Card (Matches Portal Toggle Boxes) */}
+                {/* Network Status Toggle Card (Dynamically updates label based on state) */}
                 <div 
                     onClick={() => setIsActive(!isActive)}
                     className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between shadow-2xs ${
@@ -121,10 +121,10 @@ export default function AdminTermSettings() {
                         </div>
                         <div className="text-left font-sans">
                             <h4 className="text-xs font-black uppercase tracking-tight">
-                                {isActive ? 'Network Status: Active & Operational' : 'Network Status: Strict Lockdown'}
+                                {isActive ? 'Term State: Active & Operational' : 'Term State: Inactive / Dormant'}
                             </h4>
                             <p className="text-[10px] font-mono opacity-80 mt-0.5">
-                                {isActive ? 'Exams and records are currently fully accessible.' : 'All endpoints are locked; zero records returned.'}
+                                {isActive ? 'Exams, records, and active sessions are fully operational.' : 'This term context is marked inactive; endpoints are restricted.'}
                             </p>
                         </div>
                     </div>
@@ -139,7 +139,7 @@ export default function AdminTermSettings() {
                     </div>
                 </div>
 
-                {/* Submit Action Button (Matching Portal Primary Buttons) */}
+                {/* Submit Action Button */}
                 <button 
                     type="submit" 
                     disabled={loading}

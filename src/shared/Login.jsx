@@ -43,17 +43,37 @@ export default function Login({ onAuthSuccess }) {
         })
       });
 
-      const data = await response.json();
+      // 🛡️ Gracefully parse JSON response or catch non-JSON server crash responses
+      let data;
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error("Server returned an unexpected response format. Please try again.");
+      }
 
       if (response.ok && data.status === 'SUCCESS') {
         localStorage.setItem('intranet_access_token', data.token);
         onAuthSuccess(data.token, data.domain_context, data.user);
       } else {
-        triggerAlert(data.message || "Invalid credentials profile. Please check your tracking number format and try again.");
+        // 🧹 Sanitize backend messages: Hide raw SQL or PDO errors, show clean fallback text
+        let cleanMessage = data.message || "Invalid credentials profile. Please check your tracking number format and try again.";
+        
+        if (cleanMessage.includes('SQLSTATE') || cleanMessage.includes('PDO') || cleanMessage.includes('Integrity constraint')) {
+          cleanMessage = "A temporary database processing glitch occurred. Please try signing in again.";
+        }
+
+        triggerAlert(cleanMessage);
       }
     } catch (error) {
       console.error("LAN_AUTHENTICATION_CRITICAL_FAILURE:", error);
-      triggerAlert("Could not connect to the school server. Please verify your computer is connected to the school network.");
+      
+      // 🛡️ Handle network-level or unexpected server crash errors gracefully
+      let fallbackMsg = "Could not connect to the school server. Please verify your computer is connected to the school network.";
+      if (error.message && !error.message.includes('SQLSTATE') && !error.message.includes('PDO')) {
+        fallbackMsg = error.message;
+      }
+
+      triggerAlert(fallbackMsg);
     } finally {
       setIsSubmitting(false);
     }
@@ -109,7 +129,7 @@ export default function Login({ onAuthSuccess }) {
               disabled={isSubmitting}
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
-              placeholder="eg. SRS/STF/TEA/... or SRS/STU/..."
+              placeholder="eg. TCH/00... or startrite/00/000..."
               className="w-full px-3.5 py-2.5 bg-white/70 border border-[#C5B3E2] text-xs text-[#2A1A63] rounded-xl focus:outline-none focus:border-[#2A1A63] focus:bg-white transition-all placeholder:text-[#9A87A9] shadow-2xs font-mono"
             />
           </div>
@@ -148,8 +168,6 @@ export default function Login({ onAuthSuccess }) {
           {/* <span className="text-[11px] text-[#6E5D91] font-medium">Already have an account? <span className="text-[#2A1A63] font-bold cursor-pointer hover:underline">Log in</span></span> */}
         </div>
       </div>
-
-    
 
     </div>
   );

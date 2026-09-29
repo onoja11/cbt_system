@@ -1,90 +1,115 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { ArrowLeft, ShieldAlert, Monitor, Users, AlertTriangle, ShieldCheck, Loader2, Clock } from 'lucide-react';
 import { apiRequest } from '../../core/api';
 import Logo from '../../shared/Logo';
+import windowEcho from '../../core/echo';
 
 export default function AdminLiveMonitor({ onNavigateBack, selectedSessionInfo }) {
   const [monitoredDesks, setMonitoredDesks] = useState([]);
   const [dynamicSupervisor, setDynamicSupervisor] = useState("Resolving Instructor...");
   const [isLoading, setIsLoading] = useState(true);
 
-  const targetAssessmentId = 
-    selectedSessionInfo?.assessment_id || 
-    selectedSessionInfo?.id || 
-    (selectedSessionInfo?.id ? parseInt(String(selectedSessionInfo.id).replace(/[^\d]/g, ''), 10) : null);
+  const targetAssessmentId = useMemo(() => {
+    return (
+      selectedSessionInfo?.assessment_id || 
+      selectedSessionInfo?.id || 
+      (selectedSessionInfo?.id ? parseInt(String(selectedSessionInfo.id).replace(/[^\d]/g, ''), 10) : null)
+    );
+  }, [selectedSessionInfo]);
 
   const targetSubject = selectedSessionInfo?.subject || "EXAMINATION MONITOR CHANNEL";
   const targetArm = selectedSessionInfo?.arm || "GENERAL HALL";
 
   const [adminRoomSecondsLeft, setAdminRoomSecondsLeft] = useState(null);
+  const [isExtended, setIsExtended] = useState(false);
   const examEndTimeRef = useRef(null);
 
-  useEffect(() => {
-    let isMounted = true;
+  const ingestLiveTerminalFeeds = useCallback(async () => {
+    if (!targetAssessmentId) {
+      setMonitoredDesks([]);
+      setIsLoading(false);
+      return;
+    }
 
-    const ingestLiveTerminalFeeds = async () => {
-      if (!targetAssessmentId) {
-        if (isMounted) {
-          setMonitoredDesks([]);
-          setIsLoading(false);
-        }
-        return;
-      }
+    try {
+      const res = await apiRequest(`api/v1/admin/surveillance/session/${targetAssessmentId}/terminals`, { method: 'GET' });
+      
+      if (res.ok) {
+        const payload = await res.json();
+        if (payload && payload.status === 'SUCCESS') {
+          if (payload.desks) setMonitoredDesks(payload.desks);
+          if (payload.supervisor) setDynamicSupervisor(payload.supervisor);
+          
+          const rawScheduledEnd = 
+            payload.assessment_meta?.scheduled_end || 
+            payload.session?.scheduled_end || 
+            payload.assessment?.scheduled_end || 
+            payload.exam?.scheduled_end ||
+            payload.scheduled_end ||
+            selectedSessionInfo?.scheduled_end;
 
-      try {
-        const res = await apiRequest(`api/v1/admin/surveillance/session/${targetAssessmentId}/terminals`, { method: 'GET' });
-        
-        if (res.ok && isMounted) {
-          const payload = await res.json();
-          if (payload && payload.status === 'SUCCESS') {
-            if (payload.desks) setMonitoredDesks(payload.desks);
-            if (payload.supervisor) setDynamicSupervisor(payload.supervisor);
-            
-            const rawScheduledEnd = 
-              payload.assessment_meta?.scheduled_end || 
-              payload.session?.scheduled_end || 
-              payload.assessment?.scheduled_end || 
-              payload.exam?.scheduled_end ||
-              payload.scheduled_end ||
-              selectedSessionInfo?.scheduled_end;
-
-            if (rawScheduledEnd && !examEndTimeRef.current) {
-              const targetTimeString = String(rawScheduledEnd).replace(' ', 'T');
-              examEndTimeRef.current = new Date(targetTimeString).getTime();
-            } else if (payload.desks && payload.desks.length > 0 && !examEndTimeRef.current) {
-              const maxSeconds = Math.max(...payload.desks.map(d => parseInt(d.seconds_remaining || d.secondsLeft || 0, 10)));
-              if (maxSeconds > 0) {
-                examEndTimeRef.current = Date.now() + (maxSeconds * 1000);
-              }
-            }
+          if (rawScheduledEnd) {
+            const targetTimeString = String(rawScheduledEnd).replace(' ', 'T');
+            examEndTimeRef.current = new Date(targetTimeString).getTime();
           }
         }
-      } catch (err) {
-        console.error("❌ [SURVEILLANCE METRIC EXCEPTION]:", err);
-      } finally {
-        if (isMounted) setIsLoading(false);
       }
+    } catch {
+      // Handled silently
+    } finally {
+      setIsLoading(false);
+    }
+  }, [targetAssessmentId, selectedSessionInfo]);
+
+  useEffect(() => {
+    ingestLiveTerminalFeeds();
+  }, [ingestLiveTerminalFeeds]);
+
+  useEffect(() => {
+    if (!targetAssessmentId) return;
+
+    const surveillanceChannel = windowEcho.channel('exam-surveillance-channel');
+    const roomChannel = windowEcho.channel(`room-${targetAssessmentId}`);
+
+    const handleAdminPing = () => { ingestLiveTerminalFeeds(); };
+
+    const handleRoomCommand = (event) => {
+      const commandData = event?.commandData || event?.data?.commandData || event?.data || event;
+      if (commandData) {
+        const action = commandData?.action;
+        const addedMinutes = commandData?.added_minutes || commandData?.addedMinutes;
+
+        if (action === 'ADD_TIME' && addedMinutes) {
+          const addMs = parseInt(addedMinutes, 10) * 60 * 1000;
+          if (examEndTimeRef.current) {
+            examEndTimeRef.current = Math.max(Date.now(), examEndTimeRef.current) + addMs;
+          } else {
+            examEndTimeRef.current = Date.now() + addMs;
+          }
+          setIsExtended(true);
+          const updatedRemaining = Math.max(0, Math.floor((examEndTimeRef.current - Date.now()) / 1000));
+          setAdminRoomSecondsLeft(updatedRemaining);
+        }
+      }
+      ingestLiveTerminalFeeds();
     };
 
-    ingestLiveTerminalFeeds();
-    const telemetryIntervalId = setInterval(ingestLiveTerminalFeeds, 4000);
-    
+    surveillanceChannel.listen('.room.telemetry.updated', handleAdminPing);
+    roomChannel.listen('.terminal.command.executed', handleRoomCommand);
+
     return () => {
-      isMounted = false;
-      clearInterval(telemetryIntervalId);
+      surveillanceChannel.stopListening('.room.telemetry.updated', handleAdminPing);
+      roomChannel.stopListening('.terminal.command.executed', handleRoomCommand);
+      windowEcho.leaveChannel('exam-surveillance-channel');
+      windowEcho.leaveChannel(`room-${targetAssessmentId}`);
     };
-  }, [targetAssessmentId, selectedSessionInfo]);
+  }, [targetAssessmentId, ingestLiveTerminalFeeds]);
 
   useEffect(() => {
     const tickerInterval = setInterval(() => {
       if (!examEndTimeRef.current) return;
-      
-      const remainingSeconds = Math.floor((examEndTimeRef.current - Date.now()) / 1000);
-      if (remainingSeconds <= 0) {
-        setAdminRoomSecondsLeft(0);
-      } else {
-        setAdminRoomSecondsLeft(remainingSeconds);
-      }
+      const remainingSeconds = Math.max(0, Math.floor((examEndTimeRef.current - Date.now()) / 1000));
+      setAdminRoomSecondsLeft(remainingSeconds);
     }, 1000);
 
     return () => clearInterval(tickerInterval);
@@ -92,23 +117,19 @@ export default function AdminLiveMonitor({ onNavigateBack, selectedSessionInfo }
 
   const formatRoomCountdown = (secs) => {
     if (secs === null || secs <= 0) return '00:00';
-    
     const hours = Math.floor(secs / 3600);
     const minutes = Math.floor((secs % 3600) / 60);
     const seconds = secs % 60;
-
     const pad = (n) => n.toString().padStart(2, '0');
-
-    if (hours > 0) {
-      return `${hours}h ${pad(minutes)}m ${pad(seconds)}s`;
-    }
-    
+    if (hours > 0) return `${hours}h ${pad(minutes)}m ${pad(seconds)}s`;
     return `${pad(minutes)}:${pad(seconds)}`;
   };
 
-  const totalFlaggedAlerts = monitoredDesks.reduce((sum, d) => sum + (d.activeStrikes > 0 ? 1 : 0), 0);
+  const totalFlaggedAlerts = useMemo(() => {
+    return monitoredDesks.reduce((sum, d) => sum + (d.activeStrikes > 0 ? 1 : 0), 0);
+  }, [monitoredDesks]);
 
-  if (isLoading) {
+  if (isLoading && monitoredDesks.length === 0) {
     return (
       <div className="min-h-screen bg-[#F7F5FC] flex flex-col justify-center items-center font-mono text-xs uppercase text-[#7C6B93] tracking-widest gap-2">
         <Loader2 className="w-5 h-5 animate-spin text-[#7C3AED]" />
@@ -119,8 +140,6 @@ export default function AdminLiveMonitor({ onNavigateBack, selectedSessionInfo }
 
   return (
     <div className="min-h-screen bg-[#F7F5FC] text-[#2A1A63] font-sans flex flex-col justify-between select-none">
-      
-      {/* Header Banner matching AdminDashboard & Class Directory gradient style */}
       <header className="w-full bg-gradient-to-r from-[#7C3AED] via-[#8B5CF6] to-[#A78BFA] px-6 py-4 flex justify-between items-center shadow-xs sticky top-0 z-40 shrink-0">
         <div className="flex items-center gap-3">
           <button onClick={onNavigateBack} className="w-9 h-9 bg-white/20 hover:bg-white/30 text-white rounded-full flex items-center justify-center transition-all cursor-pointer shadow-xs mr-1">
@@ -146,10 +165,15 @@ export default function AdminLiveMonitor({ onNavigateBack, selectedSessionInfo }
             <Clock className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-[10px] font-sans font-bold text-[#7C6B93] uppercase block">Room Time Remaining</span>
+            <span className="text-[10px] font-sans font-bold text-[#7C6B93] uppercase block">Hall Access Window Left</span>
             <p className={`text-base font-black font-mono mt-0.5 ${adminRoomSecondsLeft !== null && adminRoomSecondsLeft <= 300 ? 'text-rose-600 animate-pulse' : 'text-slate-900'}`}>
               {adminRoomSecondsLeft !== null ? formatRoomCountdown(adminRoomSecondsLeft) : 'Synchronizing...'}
             </p>
+            {isExtended && (
+              <span className="text-[9px] font-black font-mono text-purple-600 uppercase tracking-widest mt-0.5 block animate-pulse">
+                Time Extended Live
+              </span>
+            )}
           </div>
         </div>
 
@@ -273,7 +297,7 @@ export default function AdminLiveMonitor({ onNavigateBack, selectedSessionInfo }
       </main>
       
       <footer className="w-full border-t border-[#7C6B93]/20 bg-white py-2.5 text-center text-[10px] font-black text-[#7C6B93] tracking-wider font-mono uppercase px-4 shrink-0">
-        Start-rite intrnet institutional security matrix
+        Start-rite internet institutional security matrix
       </footer>
     </div>
   );

@@ -18,6 +18,7 @@ import AdminExamAuditCenter from './admin/pages/AdminExamAuditCenter';
 import ExamScheduler from './admin/pages/ExamScheduler';
 import AdminUsersDirectory from './admin/pages/AdminUsersDirectory';
 import DataInspectorPortal from './admin/pages/DataInspectorPortal';
+import SubAdminManagementPanel from './admin/pages/SubAdminManagementPanel';
 
 // DYNAMIC GRADING WORKSPACE IMPORTS
 import MarkEssays from './teacher/pages/MarkEssays';
@@ -155,7 +156,6 @@ export default function App() {
             } catch (err) {
               console.error(err);
             } finally {
-              // 🎯 Return to lobby after exam submission so they can use "View Graded Objective Results"
               navigateToDomainContext('student_lobby');
             }
           }}
@@ -170,6 +170,7 @@ export default function App() {
           onNavigateToArchive={() => navigateToDomainContext('admin_archive')}
           onNavigateToScheduler={() => navigateToDomainContext('admin_scheduler')}
           onNavigateToUsers={() => navigateToDomainContext('admin_users_directory')}
+          onNavigateToSubAdmins={() => navigateToDomainContext('admin_sub_admins')} 
           onNavigateToDataInspector={() => navigateToDomainContext('admin_data_inspector')}
           onNavigateToLiveSurveillance={(session) => {
             setSelectedAdminLiveSession(session);
@@ -182,10 +183,38 @@ export default function App() {
 
       {currentDomain === 'admin_classes' && <AdminClassesDirectory onNavigateBack={() => navigateToDomainContext('admin_dash')} />}
       {currentDomain === 'admin_approval' && <AdminApproval onNavigateBack={() => navigateToDomainContext('admin_dash')} />}
-      {currentDomain === 'admin_archive' && <AdminExamAuditCenter onNavigateBack={() => navigateToDomainContext('admin_dash')} />}
-      {currentDomain === 'admin_scheduler' && <ExamScheduler onNavigateBack={() => navigateToDomainContext('admin_dash')} />}
+      
+      {/* 👑 Passing userSession to enforce scope isolation on audit records */}
+      {currentDomain === 'admin_archive' && (
+        <AdminExamAuditCenter 
+          adminUser={userSession} 
+          onNavigateBack={() => navigateToDomainContext('admin_dash')} 
+        />
+      )}
+
+      {/* 👑 Passing userSession to enforce scope isolation on exam scheduler */}
+      {currentDomain === 'admin_scheduler' && (
+        <ExamScheduler 
+          adminUser={userSession} 
+          onNavigateBack={() => navigateToDomainContext('admin_dash')} 
+        />
+      )}
+
       {currentDomain === 'admin_users_directory' && <AdminUsersDirectory onNavigateBack={() => navigateToDomainContext('admin_dash')} />}
       {currentDomain === 'admin_data_inspector' && <DataInspectorPortal onNavigateBack={() => navigateToDomainContext('admin_dash')} />}
+      
+      {/* 👑 SUB-ADMIN MANAGEMENT ROUTE VIEW */}
+      {currentDomain === 'admin_sub_admins' && (
+        <div className="w-full max-w-7xl mx-auto px-8 py-6 flex flex-col items-start">
+          <button 
+            onClick={() => navigateToDomainContext('admin_dash')}
+            className="mb-6 flex items-center gap-2 px-4 py-2 bg-purple-100 hover:bg-purple-200 text-[#7C3AED] rounded-xl font-bold text-xs uppercase tracking-wider transition cursor-pointer"
+          >
+            ← Back to Dashboard Overview
+          </button>
+          <SubAdminManagementPanel onNavigateBack={() => navigateToDomainContext('admin_dash')} />
+        </div>
+      )}
       
       {currentDomain === 'admin_live' && (
         <AdminLiveMonitor 
@@ -219,4 +248,4 @@ export default function App() {
 
     </div>
   );
-}
+} 

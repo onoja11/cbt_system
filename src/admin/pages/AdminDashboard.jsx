@@ -1,10 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
-  Shield, 
   FileText, 
   Activity, 
   CheckCircle, 
-  Monitor, 
   ChevronRight, 
   Radio, 
   Clock, 
@@ -18,7 +16,6 @@ import {
   DoorOpen,
   Calendar,
   Tags,
-  VideoOff,
   Folder,
   Settings,
   ArrowLeft
@@ -26,13 +23,16 @@ import {
 import { apiRequest } from '../../core/api';
 import Logo from '../../shared/Logo';
 import AdminTermSettings from './AdminTermSettings';
+import windowEcho from '../../core/echo';
 
 export default function AdminDashboard({ 
+  adminUser, 
   onNavigateToApproval, 
   onNavigateToArchive, 
   onNavigateToScheduler, 
   onNavigateToUsers, 
   onNavigateToClasses, 
+  onNavigateToSubAdmins, 
   onNavigateToLiveSurveillance, 
   onLogOut 
 }) {
@@ -47,44 +47,93 @@ export default function AdminDashboard({
   const [liveSessions, setLiveSessions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showLogoutDrawer, setShowLogoutDrawer] = useState(false);
-
-  // 🔀 Internal View State ('dashboard' or 'term_settings')
   const [currentAdminView, setCurrentAdminView] = useState('dashboard');
 
-  useEffect(() => {
-    let isMounted = true;
+  const isMasterAdmin = useMemo(() => {
+    if (!adminUser) return true;
 
-    const ingestSchoolManagementLogs = async (isFirstLoad = false) => {
-      if (isFirstLoad) setIsLoading(true);
-      try {
-        const statsRes = await apiRequest(`api/v1/admin/dashboard/school-metrics`, { method: 'GET' });
-        if (statsRes.ok) {
-          const statsPayload = await statsRes.json();
-          if (statsPayload.status === 'SUCCESS' && statsPayload.data && isMounted) {
-            setSchoolStats(statsPayload.data);
-          }
-        }
+    const primaryRole = (adminUser.role || '').toLowerCase();
+    const staffRole = (adminUser.staff_role || '').toLowerCase();
+    const nestedStaffRole = (adminUser.staff_profile?.staff_role || '').toLowerCase();
+    const detailsStaffRole = (adminUser.details?.staff_role || '').toLowerCase();
 
-        const channelsRes = await apiRequest(`api/v1/admin/dashboard/surveillance-channels`, { method: 'GET' });
-        if (channelsRes.ok) {
-          const channelsPayload = await channelsRes.json();
-          if (channelsPayload.status === 'SUCCESS' && isMounted) {
-            setLiveSessions(channelsPayload.channels || channelsPayload.data || []);
-          }
+    const isSubAdmin = primaryRole === 'sub_admin' || 
+                       staffRole === 'sub_admin' || 
+                       nestedStaffRole === 'sub_admin' || 
+                       detailsStaffRole === 'sub_admin';
+
+    if (isSubAdmin) return false;
+    return true;
+  }, [adminUser]);
+
+  const ingestSchoolManagementLogs = useCallback(async () => {
+    try {
+      const statsRes = await apiRequest(`api/v1/admin/dashboard/school-metrics`, { method: 'GET' });
+      if (statsRes.ok) {
+        const statsPayload = await statsRes.json();
+        if (statsPayload.status === 'SUCCESS' && statsPayload.data) {
+          setSchoolStats(statsPayload.data);
         }
-      } catch (error) {
-        console.error("❌ [ACADEMIC TELEMETRY LINK FAULT]:", error);
-      } finally {
-        if (isFirstLoad && isMounted) setIsLoading(false);
       }
-    };
 
-    ingestSchoolManagementLogs(true);
+      const channelsRes = await apiRequest(`api/v1/admin/dashboard/surveillance-channels`, { method: 'GET' });
+      if (channelsRes.ok) {
+        const channelsPayload = await channelsRes.json();
+        if (channelsPayload.status === 'SUCCESS') {
+          const rawChannels = channelsPayload.channels || channelsPayload.data || [];
+          const validSessions = rawChannels.filter(s => s && s.id && (s.subject || s.arm));
+          setLiveSessions(validSessions);
+        }
+      }
+    } catch {
+      // Background sync error handled silently
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
-    const telemetryHeartbeatId = setInterval(() => ingestSchoolManagementLogs(false), 8000);
+  // 🛡️ Guarded: Runs strictly once on mount to prevent infinite socket flooding
+  useEffect(() => {
+    ingestSchoolManagementLogs();
+  }, []);
+
+  // 🛡️ Stabilized Reverb Listener with debounce protection
+  useEffect(() => {
+    let isFetching = false;
+    const surveillanceChannel = windowEcho.channel('exam-surveillance-channel');
+    
+    surveillanceChannel.listen('.room.telemetry.updated', () => {
+      if (isFetching) return;
+      isFetching = true;
+
+      apiRequest(`api/v1/admin/dashboard/surveillance-channels`, { method: 'GET' })
+        .then(res => res.json())
+        .then(payload => {
+          if (payload.status === 'SUCCESS') {
+            const rawChannels = payload.channels || payload.data || [];
+            const validSessions = rawChannels.filter(s => s && s.id && (s.subject || s.arm));
+            setLiveSessions(validSessions);
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          setTimeout(() => { isFetching = false; }, 2000); // 2-second rate limit guard
+        });
+    });
+
+    const metricsChannel = windowEcho.channel('school-metrics-channel');
+    metricsChannel.listen('.vetting.slip.updated', (event) => {
+      if (event && event.metricsData) {
+        setSchoolStats(prev => ({
+          ...prev,
+          pending_vetting_slips: event.metricsData.pending_vetting_slips
+        }));
+      }
+    });
+
     return () => {
-      isMounted = false;
-      clearInterval(telemetryHeartbeatId);
+      windowEcho.leaveChannel('exam-surveillance-channel');
+      windowEcho.leaveChannel('school-metrics-channel');
     };
   }, []);
 
@@ -104,39 +153,40 @@ export default function AdminDashboard({
     return `${totalMinutes} Mins`;
   };
 
-  const resolvedActiveWriters = React.useMemo(() => {
-    if (schoolStats.active_exam_writers > 0) return schoolStats.active_exam_writers;
+  const resolvedActiveWriters = useMemo(() => {
     if (Array.isArray(liveSessions) && liveSessions.length > 0) {
-      return liveSessions.reduce((acc, session) => acc + (parseInt(session.active_writers || session.students_count || 0, 10)), 0) || liveSessions.length * 15;
+      return liveSessions.reduce((acc, session) => {
+        const count = parseInt(session.active_writers ?? session.students_count ?? session.writers_count ?? 0, 10);
+        return acc + (isNaN(count) ? 0 : count);
+      }, 0);
     }
+    
+    if (typeof schoolStats.active_exam_writers === 'number' && schoolStats.active_exam_writers >= 0) {
+      return schoolStats.active_exam_writers;
+    }
+    
     return 0;
   }, [schoolStats.active_exam_writers, liveSessions]);
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-[#F7F5FC] flex flex-col justify-center items-center font-mono text-xs uppercase text-[#7C6B93] tracking-widest gap-2">
-        <Loader2 className="w-5 h-5 animate-spin text-[#7C3AED]" />
-        Synchronizing administrative school logs with live databases...
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-[#F7F5FC] flex flex-col justify-between select-none font-sans text-[#2A1A63] relative overflow-hidden w-full">
 
-      {/* 🏛️ EXACT REFERENCE GRADIENT HEADER BAR */}
-      <header className="w-full bg-gradient-to-r from-[#7C3AED] via-[#8B5CF6] to-[#A78BFA] px-6 py-4 flex flex-col sm:flex-row justify-between items-center shadow-xs gap-3">
-        <div className="flex items-center gap-3">
-          <div className="bg-white p-1.5 rounded-full shadow-xs flex items-center justify-center">
+      <header className="w-full bg-gradient-to-r from-[#7C3AED] via-[#8B5CF6] to-[#A78BFA] px-4 md:px-6 py-4 flex flex-col sm:flex-row justify-between items-center shadow-xs gap-3">
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="bg-white p-1.5 rounded-full shadow-xs flex items-center justify-center shrink-0">
             <Logo size={32} showText={false} />
           </div>
-          <div className="text-left">
-            <h1 className="text-xs font-black uppercase tracking-wider text-white">START-RITE ADMIN PORTAL</h1>
-            <p className="text-[11px] font-bold text-white uppercase tracking-wider mt-0.5">INSTITUTIONAL EXAMINATION MANAGEMENT SYSTEM</p>
+          <div className="text-left truncate">
+            <h1 className="text-xs font-black uppercase tracking-wider text-white truncate">
+              {isMasterAdmin ? 'START-RITE ADMIN PORTAL' : 'START-RITE SUB-ADMIN PORTAL'}
+            </h1>
+            <p className="text-[10px] md:text-[11px] font-bold text-white uppercase tracking-wider mt-0.5 truncate">
+              {isMasterAdmin ? 'INSTITUTIONAL EXAMINATION MANAGEMENT SYSTEM' : 'DECENTRALIZED CLASS ARM MANAGEMENT'}
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center">
+        <div className="flex items-center self-end sm:self-center">
           <button 
             onClick={() => setShowLogoutDrawer(true)} 
             className="w-9 h-9 bg-white/15 hover:bg-white/25 text-white rounded-full flex items-center justify-center transition-all cursor-pointer shadow-xs"
@@ -147,9 +197,8 @@ export default function AdminDashboard({
         </div>
       </header>
 
-      {/* 🔄 CONDITIONAL VIEW SWITCHER (Dashboard Home vs. Term Settings Manager) */}
       {currentAdminView === 'term_settings' ? (
-        <main className="flex-1 w-full max-w-4xl mx-auto px-8 py-8 flex flex-col items-start">
+        <main className="flex-1 w-full max-w-4xl mx-auto px-4 md:px-8 py-8 flex flex-col items-start">
           <button 
             onClick={() => setCurrentAdminView('dashboard')}
             className="mb-6 flex items-center gap-2 px-4 py-2 bg-purple-100 hover:bg-purple-200 text-[#7C3AED] rounded-xl font-bold text-xs uppercase tracking-wider transition cursor-pointer"
@@ -161,185 +210,192 @@ export default function AdminDashboard({
           </div>
         </main>
       ) : (
-        <main className="flex-1 w-full max-w-7xl mx-auto px-8 py-6 space-y-6 flex flex-col justify-start">
+        <main className="flex-1 w-full max-w-7xl mx-auto px-4 md:px-8 py-6 space-y-4 flex flex-col justify-start">
 
-        {/* 📊 EXACT MATCH 5-COLOUR ANALYTICS CARDS FROM REFERENCE IMAGE */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 font-mono w-full shrink-0">
+          {/* COMPACT TOP METRICS GRID */}
+          <div className={`grid grid-cols-2 sm:grid-cols-3 ${isMasterAdmin ? 'lg:grid-cols-5' : 'lg:grid-cols-3'} gap-3 font-mono w-full shrink-0`}>
             
-            {/* Card 1: Purple (Exam Writers) */}
-            <div className="p-1.5 bg-[#F3EEFC] border border-[#E2D5F8] rounded-2xl flex items-center gap-3.5 shadow-2xs w-full relative overflow-hidden">
-              <div className="w-18 h-18 bg-purple-400/20 border border-[#E2D5F8] rounded-xl flex items-center justify-center text-purple shrink-0 shadow-2xs">
-                <Activity className="w-6 h-6 animate-pulse" />
+            <div className="p-2 bg-[#F3EEFC] border border-[#E2D5F8] rounded-xl flex items-center gap-2.5 shadow-2xs w-full relative overflow-hidden">
+              <div className="w-10 h-10 bg-purple-400/20 border border-[#E2D5F8] rounded-lg flex items-center justify-center text-purple shrink-0 shadow-2xs">
+                <Activity className="w-4 h-4 animate-pulse" />
               </div>
               <div className="truncate text-left z-10">
-                <span className="text-xxl font-black text-slate-900 block tracking-tight">{resolvedActiveWriters}</span>
-                <p className="text-[10px] font-bold text-black tracking-wide mt-0.5 font-sans">Students In Hall</p>
-                <span className="text-[9px] text-[#7C6B93] block mt-0.5">Writing Now!</span>
-              </div>
-              <div className="absolute right-[-16px] top-0 pointer-events-none opacity-90">
-                <img 
-                  src="/folder-character.png" 
-                  alt="Folder Character" 
-                  className="w-15 h-15 object-contain"
-                  onError={(e) => { e.target.style.display = 'none'; }}
-                />
+                <span className="text-sm font-black text-slate-900 block tracking-tight">{resolvedActiveWriters}</span>
+                <p className="text-[9px] font-bold text-black tracking-wide font-sans">Students In Hall</p>
+                <span className="text-[8px] text-[#7C6B93] block">Writing Now!</span>
               </div>
             </div>
 
-            {/* Card 2: Pink (Students Enrollment) */}
-            <div className="p-1.5 bg-[#FCE7EE] border border-[#F8D3DF] rounded-2xl flex items-center gap-3.5 shadow-2xs w-full">
-              <div className="w-18 h-18 bg-red-400/20 border border-[#F8D3DF] rounded-xl flex items-center justify-center text-[#E11D48] shrink-0 shadow-2xs">
-                <GraduationCap className="w-6 h-6" />
+            <div className="p-2 bg-[#FCE7EE] border border-[#F8D3DF] rounded-xl flex items-center gap-2.5 shadow-2xs w-full">
+              <div className="w-10 h-10 bg-red-400/20 border border-[#F8D3DF] rounded-lg flex items-center justify-center text-[#E11D48] shrink-0 shadow-2xs">
+                <GraduationCap className="w-4 h-4" />
               </div>
               <div className="truncate text-left">
-                <span className="text-xxl font-black text-slate-900 block tracking-tight">{schoolStats.total_students}</span>
-                <p className="text-[10px] font-bold text-black tracking-wide mt-0.5 font-sans">Students Enrollment</p>
-                <span className="text-[9px] text-slate-500 block mt-0.5">Registered</span>
+                <span className="text-sm font-black text-slate-900 block tracking-tight">{schoolStats.total_students}</span>
+                <p className="text-[9px] font-bold text-black tracking-wide font-sans">Students Enrollment</p>
+                <span className="text-[8px] text-slate-500 block">Registered</span>
               </div>
             </div>
 
-            {/* Card 3: Green (Teaching Staff) */}
-            <div className="p-1.5 bg-[#EBFBF3] border border-[#C6F6D5] rounded-2xl flex items-center gap-3.5 shadow-2xs w-full">
-              <div className="w-18 h-18 bg-green-400/20 border border-[#C6F6D5] rounded-xl flex items-center justify-center text-[#059669] shrink-0 shadow-2xs">
-                <Users className="w-6 h-6" />
+            {isMasterAdmin && (
+              <div className="p-2 bg-[#EBFBF3] border border-[#C6F6D5] rounded-xl flex items-center gap-2.5 shadow-2xs w-full">
+                <div className="w-10 h-10 bg-green-400/20 border border-[#C6F6D5] rounded-lg flex items-center justify-center text-[#059669] shrink-0 shadow-2xs">
+                  <Users className="w-4 h-4" />
+                </div>
+                <div className="truncate text-left">
+                  <span className="text-sm font-black text-slate-900 block tracking-tight">{schoolStats.total_teachers}</span>
+                  <p className="text-[9px] font-bold text-black tracking-wide font-sans">Teaching staff</p>
+                  <span className="text-[8px] text-slate-500 block font-mono">Active</span>
+                </div>
+              </div>
+            )}
+
+            <div className="p-2 bg-[#FFFBEB] border border-[#FEF3C7] rounded-xl flex items-center gap-2.5 shadow-2xs w-full">
+              <div className="w-10 h-10 bg-[#FEF3C7] border border-[#FEF3C7] rounded-lg flex items-center justify-center text-[#D97706] shrink-0 shadow-2xs">
+                <DoorOpen className="w-4 h-4" />
               </div>
               <div className="truncate text-left">
-                <span className="text-xxl font-black text-slate-900 block tracking-tight">{schoolStats.total_teachers}</span>
-                <p className="text-[10px] font-bold text-black tracking-wide mt-0.5 font-sans">Teaching staff</p>
-                <span className="text-[9px] text-slate-500 block font-mono mt-0.5">Active</span>
+                <span className="text-sm font-black text-slate-900 block tracking-tight">{schoolStats.total_class_arms}</span>
+                <p className="text-[9px] font-bold text-black tracking-wide font-sans">Class Branches</p>
+                <span className="text-[8px] text-slate-500 block font-mono">Classes</span>
               </div>
             </div>
 
-            {/* Card 4: Orange (Class Branches) */}
-            <div className="p-1.5 bg-[#FFFBEB] border border-[#FEF3C7] rounded-2xl flex items-center gap-3.5 shadow-2xs w-full">
-              <div className="w-18 h-18 bg-[#FEF3C7] border border-[#FEF3C7] rounded-xl flex items-center justify-center text-[#D97706] shrink-0 shadow-2xs">
-                <DoorOpen className="w-6 h-6" />
+            {isMasterAdmin && (
+              <div className="p-2 bg-[#F5EFE6] border border-[#E8DFD1] rounded-xl flex items-center gap-2.5 shadow-2xs w-full col-span-2 sm:col-span-1">
+                <div className="w-10 h-10 bg-purple-400/20 border border-[#E8DFD1] rounded-lg flex items-center justify-center text-purple-400 shrink-0 shadow-2xs">
+                  <BookOpen className="w-4 h-4" />
+                </div>
+                <div className="truncate text-left">
+                  <span className="text-sm font-black text-slate-900 block tracking-tight">{schoolStats.total_subjects}</span>
+                  <p className="text-[9px] font-bold text-slate-700 tracking-wide font-sans">Total subjects</p>
+                  <span className="text-[8px] text-slate-500 block font-mono">Listed</span>
+                </div>
               </div>
-              <div className="truncate text-left">
-                <span className="text-xxl font-black text-slate-900 block tracking-tight">{schoolStats.total_class_arms}</span>
-                <p className="text-[10px] font-bold text-black tracking-wide mt-0.5 font-sans">Class Branches</p>
-                <span className="text-[9px] text-slate-500 block font-mono mt-0.5">Classes</span>
-              </div>
-            </div>
-
-            {/* Card 5: Neutral/Taupe (Total Subjects) */}
-            <div className="p-1.5 bg-[#F5EFE6] border border-[#E8DFD1] rounded-2xl flex items-center gap-3.5 shadow-2xs w-full sm:col-span-2 lg:col-span-1">
-              <div className="w-18 h-18 bg-purple-400/20 border border-[#E8DFD1] rounded-xl flex items-center justify-center text-purple-400 shrink-0 shadow-2xs">
-                <BookOpen className="w-6 h-6" />
-              </div>
-              <div className="truncate text-left">
-                <span className="text-xxl font-black text-slate-900 block tracking-tight">{schoolStats.total_subjects}</span>
-                <p className="text-[10px] font-bold text-slate-700 tracking-wide mt-0.5 font-sans">Total subjects</p>
-                <span className="text-[9px] text-slate-500 block font-mono mt-0.5">Listed</span>
-              </div>
-            </div>
+            )}
 
           </div>
 
-         {/* 🧭 NAVIGATION TILES (UNIFORM TEMPLATE) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3.5 font-mono w-full shrink-0">
+          {/* SINGLE-ROW RESPONSIVE FLEX CONTAINER (ALL ON ONE LINE ON DESKTOP) */}
+          <div className="w-full flex flex-wrap lg:flex-nowrap items-center gap-2.5 font-mono shrink-0">
 
-            {/* 1. Classes & matrix */}
-            <div onClick={onNavigateToClasses} className="py-3 px-4 bg-purple-400/20 border border-[#E2D5F8] hover:border-[#7C3AED] rounded-2xl flex items-center justify-between shadow-2xs cursor-pointer group transition-all w-full">
-              <div className="flex items-center gap-2.5 truncate">
-                <div className="w-8 h-8 bg-[#7C3AED] border border-[#E2D5F8] rounded-xl flex items-center justify-center text-white group-hover:bg-[#7C3AED] group-hover:text-white transition-all shrink-0 shadow-2xs">
-                  <Folder className="w-3.5 h-3.5" />
+            <div onClick={onNavigateToClasses} className="py-2 px-2.5 bg-purple-400/20 border border-[#E2D5F8] hover:border-[#7C3AED] rounded-xl flex items-center justify-between shadow-2xs cursor-pointer group transition-all flex-1 min-w-[130px]">
+              <div className="flex items-center gap-1.5 truncate">
+                <div className="w-6 h-6 bg-[#7C3AED] border border-[#E2D5F8] rounded-md flex items-center justify-center text-white transition-all shrink-0 shadow-2xs">
+                  <Folder className="w-3 h-3" />
                 </div>
                 <div className="truncate text-left font-sans">
-                  <span className="text-[9px] font-black text-[#7C6B93] block tracking-wider font-mono">School records</span>
-                  <p className="text-[11px] font-bold text-black-600 mt-0.5 truncate">Classes & matrix</p>
+                  <span className="text-[7px] font-black text-[#7C6B93] block tracking-wider font-mono uppercase">Records</span>
+                  <p className="text-[9px] font-bold text-slate-800 truncate">Classes</p>
                 </div>
               </div>
-              <ChevronRight className="w-3.5 h-3.5 text-[#7C6B93] group-hover:translate-x-1 group-hover:text-[#7C3AED] transition-all shrink-0" />
+              <ChevronRight className="w-3 h-3 text-[#7C6B93] group-hover:translate-x-0.5 group-hover:text-[#7C3AED] transition-all shrink-0 ml-1" />
             </div>
 
-            {/* 2. Users & subjects */}
-            <div onClick={onNavigateToUsers} className="py-3 px-4 bg-purple-400/20 border border-[#E2D5F8] hover:border-[#7C3AED] rounded-2xl flex items-center justify-between shadow-2xs cursor-pointer group transition-all w-full">
-              <div className="flex items-center gap-2.5 truncate">
-                <div className="w-8 h-8 bg-[#7C3AED] border border-[#E2D5F8] rounded-xl flex items-center justify-center text-white group-hover:bg-[#7C3AED] group-hover:text-white transition-all shrink-0 shadow-2xs">
-                  <Users className="w-3.5 h-3.5" />
+            {isMasterAdmin && (
+              <div onClick={onNavigateToUsers} className="py-2 px-2.5 bg-purple-400/20 border border-[#E2D5F8] hover:border-[#7C3AED] rounded-xl flex items-center justify-between shadow-2xs cursor-pointer group transition-all flex-1 min-w-[130px]">
+                <div className="flex items-center gap-1.5 truncate">
+                  <div className="w-6 h-6 bg-[#7C3AED] border border-[#E2D5F8] rounded-md flex items-center justify-center text-white transition-all shrink-0 shadow-2xs">
+                    <Users className="w-3 h-3" />
+                  </div>
+                  <div className="truncate text-left font-sans">
+                    <span className="text-[7px] font-black text-[#7C6B93] block tracking-wider font-mono uppercase">Directory</span>
+                    <p className="text-[9px] font-bold text-slate-800 truncate">Users & Subj</p>
+                  </div>
+                </div>
+                <ChevronRight className="w-3 h-3 text-[#7C6B93] group-hover:translate-x-0.5 group-hover:text-[#7C3AED] transition-all shrink-0 ml-1" />
+              </div>
+            )}
+
+            {isMasterAdmin && (
+              <div onClick={onNavigateToSubAdmins} className="py-2 px-2.5 bg-indigo-50 border border-indigo-200 hover:border-[#7C3AED] rounded-xl flex items-center justify-between shadow-2xs cursor-pointer group transition-all flex-1 min-w-[130px]">
+                <div className="flex items-center gap-1.5 truncate">
+                  <div className="w-6 h-6 bg-[#7C3AED] rounded-md flex items-center justify-center text-white transition-all shrink-0 shadow-2xs">
+                    <ShieldAlert className="w-3 h-3" />
+                  </div>
+                  <div className="truncate text-left font-sans">
+                    <span className="text-[7px] font-black text-indigo-500 block tracking-wider font-mono uppercase">Delegation</span>
+                    <p className="text-[9px] font-bold text-slate-900 truncate">Sub-Admin</p>
+                  </div>
+                </div>
+                <ChevronRight className="w-3 h-3 text-indigo-400 group-hover:translate-x-0.5 group-hover:text-[#7C3AED] transition-all shrink-0 ml-1" />
+              </div>
+            )}
+
+            <div onClick={onNavigateToApproval} className="py-2 px-2.5 bg-purple-400/20 border border-[#E2D5F8] hover:border-[#7C3AED] rounded-xl flex items-center justify-between shadow-2xs cursor-pointer group transition-all flex-1 min-w-[130px]">
+              <div className="flex items-center gap-1.5 truncate">
+                <div className="w-6 h-6 bg-[#7C3AED] border border-[#E2D5F8] rounded-md flex items-center justify-center text-white transition-all shrink-0 shadow-2xs">
+                  <FileText className="w-3 h-3" />
                 </div>
                 <div className="truncate text-left font-sans">
-                  <span className="text-[9px] font-black text-[#7C6B93] block tracking-wider font-mono">Directory</span>
-                  <p className="text-[11px] font-bold text-black-600 mt-0.5 truncate">Users & subjects</p>
+                  <span className="text-[7px] font-black text-[#7C6B93] block tracking-wider font-mono uppercase">Approvals</span>
+                  <p className="text-[9px] font-bold text-slate-800 truncate">{schoolStats.pending_vetting_slips} Pending</p>
                 </div>
               </div>
-              <ChevronRight className="w-3.5 h-3.5 text-[#7C6B93] group-hover:translate-x-1 group-hover:text-[#7C3AED] transition-all shrink-0" />
+              <ChevronRight className="w-3 h-3 text-[#7C6B93] group-hover:translate-x-0.5 group-hover:text-[#7C3AED] transition-all shrink-0 ml-1" />
             </div>
 
-            {/* 3. Papers (Waiting Approvals) */}
-            <div onClick={onNavigateToApproval} className="py-3 px-4 bg-purple-400/20 border border-[#E2D5F8] hover:border-[#7C3AED] rounded-2xl flex items-center justify-between shadow-2xs cursor-pointer group transition-all w-full">
-              <div className="flex items-center gap-2.5 truncate">
-                <div className="w-8 h-8 bg-[#7C3AED] border border-[#E2D5F8] rounded-xl flex items-center justify-center text-white group-hover:bg-[#7C3AED] group-hover:text-white transition-all shrink-0 shadow-2xs">
-                  <FileText className="w-3.5 h-3.5" />
+            <div onClick={onNavigateToArchive} className="py-2 px-2.5 bg-purple-400/20 border border-[#E2D5F8] hover:border-[#7C3AED] rounded-xl flex items-center justify-between shadow-2xs cursor-pointer group transition-all flex-1 min-w-[130px]">
+              <div className="flex items-center gap-1.5 truncate">
+                <div className="w-6 h-6 bg-[#7C3AED] border border-[#E2D5F8] rounded-md flex items-center justify-center text-white transition-all shrink-0 shadow-2xs">
+                  <CheckCircle className="w-3 h-3" />
                 </div>
                 <div className="truncate text-left font-sans">
-                  <span className="text-[9px] font-black text-[#7C6B93] block tracking-wider font-mono">Waiting Approvals</span>
-                  <p className="text-[11px] font-bold text-black-600 mt-0.5 truncate">{schoolStats.pending_vetting_slips} Papers Pending</p>
+                  <span className="text-[7px] font-black text-[#7C6B93] block tracking-wider font-mono uppercase">Archive</span>
+                  <p className="text-[9px] font-bold text-slate-800 truncate">Audit center</p>
                 </div>
               </div>
-              <ChevronRight className="w-3.5 h-3.5 text-[#7C6B93] group-hover:translate-x-1 group-hover:text-[#7C3AED] transition-all shrink-0" />
+              <ChevronRight className="w-3 h-3 text-[#7C6B93] group-hover:translate-x-0.5 group-hover:text-[#7C3AED] transition-all shrink-0 ml-1" />
             </div>
 
-            {/* 4. Audit center */}
-            <div onClick={onNavigateToArchive} className="py-3 px-4 bg-purple-400/20 border border-[#E2D5F8] hover:border-[#7C3AED] rounded-2xl flex items-center justify-between shadow-2xs cursor-pointer group transition-all w-full">
-              <div className="flex items-center gap-2.5 truncate">
-                <div className="w-8 h-8 bg-[#7C3AED] border border-[#E2D5F8] rounded-xl flex items-center justify-center text-white group-hover:bg-[#7C3AED] group-hover:text-white transition-all shrink-0 shadow-2xs">
-                  <CheckCircle className="w-3.5 h-3.5" />
+            <div onClick={onNavigateToScheduler} className="py-2 px-2.5 bg-purple-400/20 border border-[#E2D5F8] hover:border-[#7C3AED] rounded-xl flex items-center justify-between shadow-2xs cursor-pointer group transition-all flex-1 min-w-[130px]">
+              <div className="flex items-center gap-1.5 truncate">
+                <div className="w-6 h-6 bg-[#7C3AED] border border-[#E2D5F8] rounded-md flex items-center justify-center text-white transition-all shrink-0 shadow-2xs">
+                  <Calendar className="w-3 h-3" />
                 </div>
                 <div className="truncate text-left font-sans">
-                  <span className="text-[9px] font-black text-[#7C6B93] block tracking-wider font-mono">Exam Archive</span>
-                  <p className="text-[11px] font-bold text-black-900 mt-0.5 truncate">Audit center</p>
+                  <span className="text-[7px] font-black text-[#7C6B93] block tracking-wider font-mono uppercase">Scheduling</span>
+                  <p className="text-[9px] font-bold text-slate-800 truncate">Timetable</p>
                 </div>
               </div>
-              <ChevronRight className="w-3.5 h-3.5 text-[#7C6B93] group-hover:translate-x-1 group-hover:text-[#7C3AED] transition-all shrink-0" />
+              <ChevronRight className="w-3 h-3 text-[#7C6B93] group-hover:translate-x-0.5 group-hover:text-[#7C3AED] transition-all shrink-0 ml-1" />
             </div>
 
-            {/* 5. Timetable */}
-            <div onClick={onNavigateToScheduler} className="py-3 px-4 bg-purple-400/20 border border-[#E2D5F8] hover:border-[#7C3AED] rounded-2xl flex items-center justify-between shadow-2xs cursor-pointer group transition-all w-full">
-              <div className="flex items-center gap-2.5 truncate">
-                <div className="w-8 h-8 bg-[#7C3AED] border border-[#E2D5F8] rounded-xl flex items-center justify-center text-white group-hover:bg-[#7C3AED] group-hover:text-white transition-all shrink-0 shadow-2xs">
-                  <Calendar className="w-3.5 h-3.5" />
+            {isMasterAdmin && (
+              <div onClick={() => setCurrentAdminView('term_settings')} className="py-2 px-2.5 bg-purple-500/20 border border-[#7C3AED] hover:bg-purple-500/30 rounded-xl flex items-center justify-between shadow-2xs cursor-pointer group transition-all flex-1 min-w-[130px]">
+                <div className="flex items-center gap-1.5 truncate">
+                  <div className="w-6 h-6 bg-[#7C3AED] border border-[#E2D5F8] rounded-md flex items-center justify-center text-white group-hover:bg-[#6D28D9] transition-all shrink-0 shadow-2xs">
+                    <Settings className="w-3 h-3 animate-spin-slow" />
+                  </div>
+                  <div className="truncate text-left font-sans">
+                    <span className="text-[7px] font-black text-[#7C3AED] block tracking-wider font-mono uppercase">Config</span>
+                    <p className="text-[9px] font-bold text-slate-950 truncate">Terms & Sess</p>
+                  </div>
                 </div>
-                <div className="truncate text-left font-sans">
-                  <span className="text-[9px] font-black text-[#7C6B93] block tracking-wider font-mono">CBT Scheduling</span>
-                  <p className="text-[11px] font-bold text-black-900 mt-0.5 truncate">Timetable</p>
-                </div>
+                <ChevronRight className="w-3 h-3 text-[#7C3AED] group-hover:translate-x-0.5 transition-all shrink-0 ml-1" />
               </div>
-              <ChevronRight className="w-3.5 h-3.5 text-[#7C6B93] group-hover:translate-x-1 group-hover:text-[#7C3AED] transition-all shrink-0" />
-            </div>
-
-            {/* 6. NEW: Terms & Sessions Manager Tile */}
-            <div onClick={() => setCurrentAdminView('term_settings')} className="py-3 px-4 bg-purple-500/20 border border-[#7C3AED] hover:bg-purple-500/30 rounded-2xl flex items-center justify-between shadow-2xs cursor-pointer group transition-all w-full">
-              <div className="flex items-center gap-2.5 truncate">
-                <div className="w-8 h-8 bg-[#7C3AED] border border-[#E2D5F8] rounded-xl flex items-center justify-center text-white group-hover:bg-[#6D28D9] transition-all shrink-0 shadow-2xs">
-                  <Settings className="w-3.5 h-3.5 animate-spin-slow" />
-                </div>
-                <div className="truncate text-left font-sans">
-                  <span className="text-[9px] font-black text-[#7C3AED] block tracking-wider font-mono">Configuration</span>
-                  <p className="text-[11px] font-bold text-slate-950 mt-0.5 truncate">Terms & Sessions</p>
-                </div>
-              </div>
-              <ChevronRight className="w-3.5 h-3.5 text-[#7C3AED] group-hover:translate-x-1 transition-all shrink-0" />
-            </div>
+            )}
 
           </div>
 
-         {/* 📺 ACTIVE EXAMINATION HALL MONITOR CHANNELS SECTION */}
-          <div className="bg-gradient-to-t from-[#D8B4FE]/60 via-[#EEDAFE]/40 to-[#F7F2FF] border border-[#E2D5F8] rounded-3xl p-5 shadow-xs flex flex-col overflow-hidden w-full text-left">
+          <div className="bg-gradient-to-t from-[#D8B4FE]/60 via-[#EEDAFE]/40 to-[#F7F2FF] border border-[#E2D5F8] rounded-3xl p-4 md:p-5 shadow-xs flex flex-col overflow-hidden w-full text-left">
             <div className="flex items-center gap-2 border-b border-[#E2D5F8]/60 pb-3 mb-3 shrink-0 w-full font-mono">
               <Radio className="w-4 h-4 text-emerald-500 animate-pulse" />
               <span className="text-[10px] font-black text-[#7C6B93] uppercase tracking-wider">Active Examination Hall Monitor Channels</span>
             </div>
 
             <div className="flex-1 w-full pb-1 flex flex-col items-center">
-              {(!Array.isArray(liveSessions) || liveSessions.length === 0) ? (
+              {isLoading ? (
+                <div className="py-12 flex items-center justify-center font-mono text-xs uppercase text-[#7C6B93]">
+                  <Loader2 className="w-5 h-5 animate-spin text-[#7C3AED] mr-2" /> Loading surveillance channels...
+                </div>
+              ) : (!Array.isArray(liveSessions) || liveSessions.length === 0) ? (
                 <div className="w-full flex flex-col justify-center items-center text-center font-mono py-10">
-                  <div className="w-24 h-24 flex items-center justify-center text-[#7C3AED] mb-2">
+                  <div className="w-20 h-20 flex items-center justify-center text-[#7C3AED] mb-2">
                     <img 
                       src="/thinking-character.png" 
                       alt="Thinking Character" 
-                      className="w-20 h-20 object-contain"
+                      className="w-16 h-16 sm:w-20 sm:h-20 object-contain"
                       onError={(e) => { e.target.style.display = 'none'; }}
                     />
                   </div>
@@ -378,7 +434,7 @@ export default function AdminDashboard({
                         )}
                         <button 
                           onClick={() => onNavigateToLiveSurveillance(session)} 
-                          className="px-3.5 py-1.5 bg-[#22C55E] hover:bg-[#16A34A] text-white text-[10px] uppercase font-black tracking-wider rounded-xl cursor-pointer shadow-md shrink-0 transition-all active:scale-[0.97] !bg-[#22C55E] !text-white"
+                          className="px-3.5 py-1.5 bg-[#22C55E] hover:bg-[#16A34A] text-white text-[10px] uppercase font-black tracking-wider rounded-xl cursor-pointer shadow-md shrink-0 transition-all active:scale-[0.97]"
                         >
                           Monitor Room
                         </button>
@@ -394,7 +450,7 @@ export default function AdminDashboard({
       )}
 
       <footer className="w-full border-t border-[#7C6B93]/20 bg-white py-2.5 text-center text-[10px] font-black text-[#7C6B93] tracking-wider font-mono uppercase px-4 shrink-0">
-        Start-rite intrnet institutional security matrix
+        Start-rite internet institutional security matrix
       </footer>
 
       <div className={`fixed inset-0 bg-slate-950/40 backdrop-blur-xs z-[10000] transition-all duration-300 flex flex-col justify-end w-full ${showLogoutDrawer ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>

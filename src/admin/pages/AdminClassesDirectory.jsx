@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
-  Folder, ArrowLeft, ChevronRight, Layers, Clock, Loader2, 
-  User, FileSpreadsheet, Download, BookOpen, Award, TrendingUp, X, Sparkles, BarChart2, Search
+  Folder, ArrowLeft, ChevronRight, Loader2, 
+  User, FileSpreadsheet, BookOpen, Award, X, Search, BarChart2
 } from 'lucide-react';
 import { apiRequest } from '../../core/api';
 import Logo from '../../shared/Logo';
@@ -9,7 +9,6 @@ import { calculateNigerianGrade, getGradeBadgeStyle } from '../../core/gradingUt
 import GlobalTermFilterBar from '../components/GlobalTermFilterBar';
 
 export default function AdminClassesDirectory({ onNavigateBack }) {
-  // 🔄 Initialize state from localStorage so page refreshes don't wipe your view position
   const [currentLevel, setCurrentLevel] = useState(() => localStorage.getItem('admin_dir_level') || 'folders'); 
   const [activeTab, setActiveTab] = useState(() => localStorage.getItem('admin_dir_tab') || 'subjects'); 
   const [isLoading, setIsLoading] = useState(true);
@@ -27,46 +26,7 @@ export default function AdminClassesDirectory({ onNavigateBack }) {
   const [selectedStudentDetail, setSelectedStudentDetail] = useState(null);
   const [isStudentLoading, setIsStudentLoading] = useState(false);
 
-  useEffect(() => {
-    loadInitialDirectoryData();
-  }, []);
-
-  // 🔄 Sync state persistence whenever user navigates or changes tabs
-  useEffect(() => {
-    localStorage.setItem('admin_dir_level', currentLevel);
-    localStorage.setItem('admin_dir_tab', activeTab);
-    if (selectedClass) {
-      localStorage.setItem('admin_dir_selected_class', JSON.stringify(selectedClass));
-    } else {
-      localStorage.removeItem('admin_dir_selected_class');
-    }
-  }, [currentLevel, activeTab, selectedClass]);
-
-  const loadInitialDirectoryData = async () => {
-    setIsLoading(true);
-    try {
-      const classRes = await apiRequest('api/v1/admin/directory/class-arms', { method: 'GET' });
-      if (classRes.ok) {
-        const classPayload = await classRes.json();
-        const fetchedArms = classPayload.class_arms || [];
-        setClassGroups(fetchedArms);
-
-        // 🔄 If we were viewing a class before refreshing, automatically reload its details
-        const savedClassJson = localStorage.getItem('admin_dir_selected_class');
-        if (savedClassJson && currentLevel === 'class_details') {
-          const parsedClass = JSON.parse(savedClassJson);
-          const foundArm = fetchedArms.find(a => a.id === parsedClass.id) || parsedClass;
-          await reloadClassMatrixSilently(foundArm);
-        }
-      }
-    } catch (err) {
-      console.error("❌ [DIRECTORY REGISTRY FAULT]:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const reloadClassMatrixSilently = async (classArm) => {
+  const reloadClassMatrixSilently = useCallback(async (classArm) => {
     try {
       const activeSession = localStorage.getItem('admin_filter_session');
       const activeTerm = localStorage.getItem('admin_filter_term');
@@ -81,10 +41,47 @@ export default function AdminClassesDirectory({ onNavigateBack }) {
         setClassSubjects(payload.subjects || []);
         setClassGradebook(payload.gradebook_matrix || []);
       }
-    } catch (err) {
-      console.error("❌ [SILENT MATRIX RELOAD FAULT]:", err);
+    } catch {
+      // Background reload error handled silently
     }
-  };
+  }, []);
+
+  const loadInitialDirectoryData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const classRes = await apiRequest('api/v1/admin/directory/class-arms', { method: 'GET' });
+      if (classRes.ok) {
+        const classPayload = await classRes.json();
+        const fetchedArms = classPayload.class_arms || [];
+        setClassGroups(fetchedArms);
+
+        const savedClassJson = localStorage.getItem('admin_dir_selected_class');
+        if (savedClassJson && currentLevel === 'class_details') {
+          const parsedClass = JSON.parse(savedClassJson);
+          const foundArm = fetchedArms.find(a => a.id === parsedClass.id) || parsedClass;
+          await reloadClassMatrixSilently(foundArm);
+        }
+      }
+    } catch {
+      // Network fault handled silently
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentLevel, reloadClassMatrixSilently]);
+
+  useEffect(() => {
+    loadInitialDirectoryData();
+  }, [loadInitialDirectoryData]);
+
+  useEffect(() => {
+    localStorage.setItem('admin_dir_level', currentLevel);
+    localStorage.setItem('admin_dir_tab', activeTab);
+    if (selectedClass) {
+      localStorage.setItem('admin_dir_selected_class', JSON.stringify(selectedClass));
+    } else {
+      localStorage.removeItem('admin_dir_selected_class');
+    }
+  }, [currentLevel, activeTab, selectedClass]);
 
   const handleSelectClassArm = async (classArm) => {
     setSelectedClass(classArm);
@@ -106,8 +103,8 @@ export default function AdminClassesDirectory({ onNavigateBack }) {
         setCurrentLevel('class_details');
         setActiveTab('subjects');
       }
-    } catch (err) {
-      console.error(err);
+    } catch {
+      // Fallback network error handler
     } finally {
       setIsLoading(false);
     }
@@ -130,8 +127,8 @@ export default function AdminClassesDirectory({ onNavigateBack }) {
           setSelectedStudentDetail(payload.data);
         }
       }
-    } catch (err) {
-      console.error("❌ [STUDENT TRANSCRIPT FAULT]:", err);
+    } catch {
+      // Transcript retrieval error handled silently
     } finally {
       setIsStudentLoading(false);
     }
@@ -162,23 +159,25 @@ export default function AdminClassesDirectory({ onNavigateBack }) {
   const filteredSubjects = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
     if (!q) return classSubjects;
-    return classSubjects.filter(sub => 
-      (sub.name && sub.name.toLowerCase().includes(q)) ||
-      (sub.code && sub.code.toLowerCase().includes(q)) ||
-      (sub.teacher_name && sub.teacher_name.toLowerCase().includes(q))
-    );
+    return classSubjects.filter(sub => {
+      const name = String(sub.name || sub.subject_name || '').toLowerCase();
+      const code = String(sub.code || '').toLowerCase();
+      const teacher = String(sub.teacher_name || '').toLowerCase();
+      return name.includes(q) || code.includes(q) || teacher.includes(q);
+    });
   }, [classSubjects, searchQuery]);
 
   const filteredGradebook = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
     if (!q) return classGradebook;
-    return classGradebook.filter(student => 
-      (student.student_name && student.student_name.toLowerCase().includes(q)) ||
-      (student.admission_no && student.admission_no.toLowerCase().includes(q))
-    );
+    return classGradebook.filter(student => {
+      const name = String(student.student_name || student.name || '').toLowerCase();
+      const admission = String(student.admission_no || '').toLowerCase();
+      return name.includes(q) || admission.includes(q);
+    });
   }, [classGradebook, searchQuery]);
 
-  if (isLoading) {
+  if (isLoading && currentLevel === 'folders' && classGroups.length === 0) {
     return (
       <div className="min-h-screen bg-[#F7F5FC] flex flex-col justify-center items-center font-mono text-xs uppercase text-[#7C6B93] tracking-widest gap-2">
         <Loader2 className="w-5 h-5 animate-spin text-[#7C3AED]" />
@@ -250,8 +249,16 @@ export default function AdminClassesDirectory({ onNavigateBack }) {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search class folders..."
-                className="w-full pl-10 pr-4 py-2 text-xs rounded-2xl font-bold text-slate-900 focus:outline-none uppercase font-mono"
+                className="w-full pl-10 pr-10 py-2 text-xs rounded-2xl font-bold text-slate-900 focus:outline-none uppercase font-mono"
               />
+              {searchQuery && (
+                <button 
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           </div>
 
@@ -316,8 +323,16 @@ export default function AdminClassesDirectory({ onNavigateBack }) {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={activeTab === 'subjects' ? "Search subjects or teachers..." : "Search student names or admission numbers..."}
-                className="w-full pl-10 pr-4 py-2 text-xs rounded-xl font-bold text-slate-900 focus:outline-none uppercase font-mono"
+                className="w-full pl-10 pr-10 py-2 text-xs rounded-xl font-bold text-slate-900 focus:outline-none uppercase font-mono"
               />
+              {searchQuery && (
+                <button 
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
             <div className="font-mono text-[10px] font-black uppercase text-[#7C6B93] shrink-0">
               {activeTab === 'subjects' ? `${filteredSubjects.length} of ${classSubjects.length} subjects` : `${filteredGradebook.length} of ${classGradebook.length} students`}
@@ -418,7 +433,7 @@ export default function AdminClassesDirectory({ onNavigateBack }) {
         </main>
       )}
 
-      {/* 🎯 DETAILED STUDENT TRANSCRIPT MODAL */}
+      {/* DETAILED STUDENT TRANSCRIPT MODAL */}
       {(selectedStudentDetail || isStudentLoading) && (
         <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs z-[50000] flex items-center justify-center p-3 sm:p-4">
           <div className="bg-white border border-[#E2D5F8] w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden font-sans text-left max-h-[95vh] sm:max-h-[90vh] flex flex-col animate-fadeIn">
@@ -478,24 +493,20 @@ export default function AdminClassesDirectory({ onNavigateBack }) {
                               <th className="p-3.5 sm:p-4 pl-6 font-sans">Subject Title</th>
                               <th className="p-3.5 sm:p-4 font-mono">Assigned Teacher</th>
                               <th className="p-3.5 sm:p-4 text-center bg-[#7C3AED]/90">CA 1</th>
-                              <th className="p-3.5 sm:p-4 text-center bg-[#7C3AED]/90">CA 2</th>
-                              <th className="p-3.5 sm:p-4 text-center bg-[#7C3AED]/90">CA 3</th>
-                              <th className="p-3.5 sm:p-4 text-center bg-slate-900">Exam</th>
+                              <th className="p-3.5 sm:p-4 text-center bg-[#7C3AED]/90">Exam</th>
                               <th className="p-3.5 sm:p-4 text-center bg-[#E11D48]">Total</th>
                               <th className="p-3.5 sm:p-4 text-center pr-6">Grade</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-[#E2D5F8] uppercase font-bold text-slate-700 bg-white">
                             {selectedStudentDetail.subjects.map((sub, sIdx) => {
-                              const standardGrade = calculateNigerianGrade(sub.total, sub.max_score || 100);
+                              const standardGrade = calculateNigerianGrade(sub.total, sub.max_score || 80);
 
                               return (
                                 <tr key={sIdx} className="hover:bg-[#FAF9FA] transition-colors">
                                   <td className="p-3.5 sm:p-4 pl-6 font-sans font-black text-slate-950 text-xs truncate max-w-[140px] sm:max-w-none">{sub.subject_name}</td>
                                   <td className="p-3.5 sm:p-4 text-[10px] text-[#7C6B93] font-mono truncate max-w-[120px] sm:max-w-none">{sub.teacher_name}</td>
                                   <td className="p-3.5 sm:p-4 text-center text-[#7C6B93]">{sub.ca1}</td>
-                                  <td className="p-3.5 sm:p-4 text-center text-[#7C6B93]">{sub.ca2}</td>
-                                  <td className="p-3.5 sm:p-4 text-center text-[#7C6B93]">{sub.ca3}</td>
                                   <td className="p-3.5 sm:p-4 text-center text-[#7C6B93]">{sub.exam}</td>
                                   <td className="p-3.5 sm:p-4 text-center bg-[#F7F5FC] font-black text-slate-950 border-x border-[#E2D5F8]">{sub.total}</td>
                                   <td className="p-3.5 sm:p-4 text-center pr-6">
@@ -520,7 +531,7 @@ export default function AdminClassesDirectory({ onNavigateBack }) {
                 onClick={() => setSelectedStudentDetail(null)}
                 className="px-5 py-2.5 bg-[#22C55E] hover:bg-[#16A34A] text-white text-xs font-black uppercase tracking-wider rounded-xl shadow-md cursor-pointer transition-all active:scale-[0.97]"
               >
-                Close Transcript
+                Close Transcript Modal
               </button>
             </div>
 

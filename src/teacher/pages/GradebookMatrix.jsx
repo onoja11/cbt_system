@@ -2,31 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, FileSpreadsheet, Loader2, Search } from 'lucide-react';
 import { apiRequest } from '../../core/api';
 import Logo from '../../shared/Logo';
-import { calculateNigerianGrade, getGradeBadgeStyle } from '../../core/gradingUtils'; // 👈 Imported shared grading logic
 
 export default function GradebookMatrix({ activeFolderContext, onNavigateBack }) {
   const [gradebookRows, setGradebookRows] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-
-  // 🏛️ STANDARD NIGERIAN ACADEMIC GRADING & REMARKS MAPPING
-  const computeSchoolGradeMetrics = (totalScore) => {
-    const score = parseFloat(totalScore || 0);
-    const grade = calculateNigerianGrade(score, 100);
-    
-    let remarks = 'FAIL';
-    if (grade === 'A') remarks = 'EXCELLENT';
-    else if (grade === 'B') remarks = 'VERY GOOD';
-    else if (grade === 'C') remarks = 'GOOD';
-    else if (grade === 'D') remarks = 'FAIR';
-    else if (grade === 'E') remarks = 'PASS';
-
-    return { 
-      grade, 
-      remarks, 
-      color: getGradeBadgeStyle(grade) 
-    };
-  };
 
   useEffect(() => {
     const fetchClassGradebookMatrix = async () => {
@@ -83,21 +63,16 @@ export default function GradebookMatrix({ activeFolderContext, onNavigateBack })
         </style>
       </head>
       <body>
-        <h3>START-RITE SCHOOLS MASTER EXAM GRADEBOOK</h3>
+        <h3>START-RITE SCHOOLS MASTER EXAM GRADEBOOK (CA1 & EXAM)</h3>
         <p>COHORT FOLDER: ${String(activeFolderContext?.name || 'RECORDS').toUpperCase()} (${activeFolderContext?.classGroup || 'N/A'})</p>
         <table border="1">
           <thead>
             <tr>
               <th>Student Full Name</th>
               <th>Admission Number</th>
-              <th>CA 1</th>
-              <th>CA 2</th>
-              <th>CA 3</th>
-              <th>Total CA Mark</th>
-              <th>Final Exam</th>
-              <th>Grand Total Score</th>
-              <th>Final Grade</th>
-              <th>Remarks</th>
+              <th>CA 1 (Max 20)</th>
+              <th>Final Exam (Max 60)</th>
+              <th>Grand Total Score (Max 80)</th>
             </tr>
           </thead>
           <tbody>
@@ -105,25 +80,16 @@ export default function GradebookMatrix({ activeFolderContext, onNavigateBack })
 
     filteredRoster.forEach(row => {
       const ca1 = parseFloat(row.ca1_score ?? 0);
-      const ca2 = parseFloat(row.ca2_score ?? 0);
-      const ca3 = parseFloat(row.ca3_score ?? row.ca3_obj_score ?? 0) + parseFloat(row.ca3_theory_score ?? 0);
-      const totalCA = ca1 + ca2 + ca3;
       const exam = parseFloat(row.exam_score ?? 0);
-      const grandTotal = totalCA + exam;
-      const metrics = computeSchoolGradeMetrics(grandTotal);
+      const grandTotal = ca1 + exam;
 
       workbookHtml += `
         <tr>
           <td class="student-title">${String(row.student_name || row.name || 'UNKNOWN CANDIDATE').toUpperCase()}</td>
           <td class="num-format">${row.admission_no || row.admissionNo || 'N/A'}</td>
           <td>${ca1.toFixed(1)}</td>
-          <td>${ca2.toFixed(1)}</td>
-          <td>${ca3.toFixed(1)}</td>
-          <td style="background-color: #faf9fa; font-weight: bold;">${totalCA.toFixed(1)}</td>
           <td>${exam.toFixed(1)}</td>
           <td class="aggregate-cell">${grandTotal.toFixed(1)}</td>
-          <td style="font-weight: bold;">${metrics.grade}</td>
-          <td>${metrics.remarks}</td>
         </tr>
       `;
     });
@@ -158,7 +124,7 @@ export default function GradebookMatrix({ activeFolderContext, onNavigateBack })
   return (
     <div className="min-h-screen bg-[#F7F5FC] flex flex-col justify-between font-sans text-[#2A1A63] w-full overflow-x-hidden">
       
-      {/* 🏛️ EXACT REFERENCE GRADIENT HEADER BAR */}
+      {/* 🏛️ HEADER BAR */}
       <header className="w-full bg-gradient-to-r from-[#7C3AED] via-[#8B5CF6] to-[#A78BFA] px-6 py-3.5 flex justify-between items-center shadow-xs">
         <div className="flex items-center gap-3">
           <button 
@@ -171,17 +137,16 @@ export default function GradebookMatrix({ activeFolderContext, onNavigateBack })
             <Logo size={32} showText={false} />
           </div>
           <div>
-            <span className="text-[10px] font-mono font-bold text-white/80 uppercase tracking-wider block">Continuous Assessment Folder Matrix</span>
+            <span className="text-[10px] font-mono font-bold text-white/80 uppercase tracking-wider block">Master Ledger Matrix (CA1 / Exam)</span>
             <h2 className="text-xs font-black text-white uppercase tracking-tight mt-0.5">
               Teacher Ledger View: {activeFolderContext?.name || 'Class Core'}
             </h2>
           </div>
         </div>
 
-        {/* 🎯 UNIFORM VIBRANT GREEN BUTTON STYLE */}
         <button 
           onClick={handleExportOfficeGradebook}
-          className="px-4 py-2.5 bg-[#22C55E] hover:bg-[#16A34A] text-white text-xs font-black uppercase tracking-wider rounded-xl flex items-center gap-1.5 shadow-md transition-all active:scale-[0.97] cursor-pointer !bg-[#22C55E] !text-white"
+          className="px-4 py-2.5 bg-[#22C55E] hover:bg-[#16A34A] text-white text-xs font-black uppercase tracking-wider rounded-xl flex items-center gap-1.5 shadow-md transition-all active:scale-[0.97] cursor-pointer"
         >
           <FileSpreadsheet className="w-4 h-4 text-white" /> EXPORT REPORT SHEET (.XLS)
         </button>
@@ -200,57 +165,39 @@ export default function GradebookMatrix({ activeFolderContext, onNavigateBack })
           />
         </div>
 
-        {/* COMPREHENSIVE EVALUATION REGISTRY TABLE MAP */}
+        {/* GRADEBOOK TABLE MAP (CA1 & EXAM ONLY) */}
         <div className="w-full bg-[#F3EEFC] border border-[#E2D5F8] rounded-3xl overflow-hidden shadow-xs">
           <div className="w-full overflow-x-auto">
-            <table className="w-full min-w-[1000px] border-collapse text-left text-xs">
+            <table className="w-full min-w-[700px] border-collapse text-left text-xs">
               <thead>
                 <tr className="bg-[#7C3AED] text-white font-mono text-[9px] uppercase tracking-wider border-b border-[#E2D5F8]">
                   <th className="p-4 font-black">Student Full Name</th>
                   <th className="p-4 font-black">Admission Number</th>
-                  <th className="p-4 font-black text-center bg-[#7C3AED]/90">CA 1</th>
-                  <th className="p-4 font-black text-center bg-[#7C3AED]/90">CA 2</th>
-                  <th className="p-4 font-black text-center bg-[#7C3AED]/90">CA 3</th>
-                  <th className="p-4 font-black text-center bg-[#7C3AED]/80">Total CA</th>
-                  <th className="p-4 font-black text-center bg-slate-900">Final Exam</th>
-                  <th className="p-4 font-black text-center bg-[#E11D48]">Grand Total</th>
-                  <th className="p-4 font-black text-center">Final Grade</th>
-                  <th className="p-4 font-black text-center">Remarks</th>
+                  <th className="p-4 font-black text-center bg-[#7C3AED]/90">CA 1 (Max 20)</th>
+                  <th className="p-4 font-black text-center bg-slate-900">Final Exam (Max 60)</th>
+                  <th className="p-4 font-black text-center bg-[#E11D48]">Grand Total (Max 80)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E2D5F8] font-bold text-slate-700 bg-white">
                 {filteredRoster.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="p-12 text-center font-mono text-[#7C6B93] uppercase tracking-wide bg-white">
+                    <td colSpan={5} className="p-12 text-center font-mono text-[#7C6B93] uppercase tracking-wide bg-white">
                       No matching student report entries located in this course track.
                     </td>
                   </tr>
                 ) : (
                   filteredRoster.map((row, idx) => {
                     const ca1 = parseFloat(row.ca1_score ?? 0);
-                    const ca2 = parseFloat(row.ca2_score ?? 0);
-                    const ca3 = parseFloat(row.ca3_score ?? row.ca3_obj_score ?? 0) + parseFloat(row.ca3_theory_score ?? 0);
-                    const totalCA = ca1 + ca2 + ca3;
                     const exam = parseFloat(row.exam_score ?? 0);
-                    const grandTotal = totalCA + exam;
-                    const metrics = computeSchoolGradeMetrics(grandTotal);
+                    const grandTotal = ca1 + exam;
 
                     return (
                       <tr key={row.student_profile_id || row.id || idx} className="hover:bg-[#FAF9FA] transition-colors">
                         <td className="p-4 font-black text-slate-950 uppercase truncate max-w-xs">{row.student_name || row.name}</td>
                         <td className="p-4 font-mono text-[11px] text-[#7C6B93] uppercase">{row.admission_no || row.admissionNo}</td>
-                        <td className="p-4 text-center font-mono text-[#7C6B93]">{ca1.toFixed(1)}</td>
-                        <td className="p-4 text-center font-mono text-[#7C6B93]">{ca2.toFixed(1)}</td>
-                        <td className="p-4 text-center font-mono text-[#7C6B93]">{ca3.toFixed(1)}</td>
-                        <td className="p-4 text-center font-mono font-black text-[#7C3AED] border-r border-[#E2D5F8] bg-[#F7F5FC]">{totalCA.toFixed(1)}</td>
-                        <td className="p-4 text-center font-mono text-[#7C6B93]">{exam.toFixed(1)}</td>
-                        <td className="p-4 text-center font-mono font-black text-slate-950 bg-[#FAF9FA] text-sm border-x border-[#E2D5F8]">{grandTotal.toFixed(1)}</td>
-                        <td className="p-4 text-center">
-                          <span className={`px-2.5 py-0.5 rounded-lg font-bold text-xs border ${metrics.color}`}>
-                            {metrics.grade}
-                          </span>
-                        </td>
-                        <td className="p-4 text-center font-mono text-[10px] font-black text-[#7C6B93] uppercase">{metrics.remarks}</td>
+                        <td className="p-4 text-center font-mono font-black text-[#7C3AED] bg-[#F7F5FC]">{ca1.toFixed(1)}</td>
+                        <td className="p-4 text-center font-mono font-black text-slate-900">{exam.toFixed(1)}</td>
+                        <td className="p-4 text-center font-mono font-black text-rose-600 bg-rose-50 text-sm border-x border-[#E2D5F8]">{grandTotal.toFixed(1)}</td>
                       </tr>
                     );
                   })

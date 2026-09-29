@@ -94,7 +94,6 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
         setAssessmentStatus(data.assessment_status || data.status_label || data.assessment?.status || 'draft');
         setFeedbackComment(data.feedback_comment || data.feedback || data.assessment?.feedback_comment || '');
         
-        // 🎯 DYNAMIC INSTRUCTIONS INGESTION FROM BACKEND RECORDS
         if (data.assessment?.objective_instructions || data.objective_instructions) {
           setObjInstructions(data.assessment?.objective_instructions || data.objective_instructions);
         }
@@ -103,18 +102,28 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
         }
 
         if (data.questions && data.questions.length > 0) {
-          const remapped = data.questions.map(q => ({
-            id: q.id,
-            type: cleanString(q.type) === 'theory' ? 'theory' : 'objective',
-            text: q.question_text || q.questionText,
-            score: parseFloat(q.points_weight || q.pointsWeight || 2),
-            imageUrl: q.image_url || q.imageUrl || null, 
-            rubric: q.theory_rubric || q.rubric || '',
-            options: q.options ? (typeof q.options === 'string' ? JSON.parse(q.options) : q.options).map((opt, idx) => ({
-              text: opt.text || opt,
-              isCorrect: opt.is_correct !== undefined ? opt.is_correct : (idx === q.correct_option_index || idx === q.correctOptionIndex)
-            })) : []
-          }));
+          const remapped = data.questions.map(q => {
+            const rawOpts = q.options ? (typeof q.options === 'string' ? JSON.parse(q.options) : q.options) : [];
+            const correctOptIdx = q.correct_option_index !== undefined && q.correct_option_index !== null ? parseInt(q.correct_option_index, 10) : null;
+
+            // 🌟 ABSOLUTE ORDER PRESERVATION: Map exact array indexes to maintain document arrangement
+            const mappedOpts = rawOpts.map((opt, idx) => {
+              const optText = typeof opt === 'object' ? (opt.text || opt.text_value || '') : opt;
+              const isCorrect = (idx === correctOptIdx);
+              return { text: optText, isCorrect };
+            });
+
+            return {
+              id: q.id,
+              type: cleanString(q.type) === 'theory' ? 'theory' : 'objective',
+              text: q.question_text || q.questionText,
+              score: parseFloat(q.points_weight || q.pointsWeight || 2),
+              imageUrl: q.image_url || q.imageUrl || null, 
+              rubric: q.theory_rubric || q.rubric || '',
+              options: mappedOpts,
+              correctOptionIndex: correctOptIdx
+            };
+          });
           setQuestionBank(remapped);
         } else {
           setQuestionBank([]);
@@ -131,7 +140,6 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
     refreshQuestionBlueprint();
   }, [refreshQuestionBlueprint]);
 
-  // 🎯 NEW: SAVE MODIFIED DIRECTIONS PACKET TO LARAVEL BACKEND ENVIRONMENT
   const handleUpdateSectionInstructions = async () => {
     if (isLocked || !targetAssessmentId) return;
     setIsSavingInstructions(true);
@@ -420,8 +428,13 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
     }
     setManualImageFile(null);
     setManualImagePreview(q.imageUrl ? `${BASE_URL}/${q.imageUrl.startsWith('/') ? q.imageUrl.slice(1) : q.imageUrl}` : ''); 
+    
     if (cleanString(q.type) === 'objective') {
-      setOptions(q.options || [{ text: '', isCorrect: true }]);
+      const loadedOpts = (q.options || []).map((opt, idx) => ({
+        text: opt.text || opt,
+        isCorrect: opt.isCorrect !== undefined ? opt.isCorrect : (idx === q.correctOptionIndex)
+      }));
+      setOptions(loadedOpts.length > 0 ? loadedOpts : [{ text: '', isCorrect: true }]);
     } else {
       setTheoryRubric(q.rubric || '');
     }
@@ -471,11 +484,6 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
     return filteredBankList.findIndex(q => q.id === activeQuestionId);
   }, [filteredBankList, activeQuestionId]);
 
-  const displayLabelString = useMemo(() => {
-    const num = activeQuestionIndex !== -1 ? activeQuestionIndex + 1 : filteredBankList.length + 1;
-    return activeSectionTab === 'objective' ? `Objective Q${num}` : `Theory Q${num}`;
-  }, [activeSectionTab, activeQuestionIndex, filteredBankList]);
-
   return (
     <div className="min-h-screen bg-[#F7F5FC] flex flex-col justify-between text-[#2A1A63] font-sans selection:bg-[#7C3AED]/20 w-full overflow-x-hidden relative">
       
@@ -494,7 +502,7 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
         </div>
       )}
 
-      {/* 🏛️ EXACT REFERENCE GRADIENT HEADER BAR */}
+      {/* 🏛️ HEADER BAR */}
       <header className="w-full bg-gradient-to-r from-[#7C3AED] via-[#8B5CF6] to-[#A78BFA] px-6 py-3.5 flex justify-between items-center shadow-xs">
         <div className="flex items-center gap-3 min-w-0">
           <button onClick={onNavigateBack} className="w-8 h-8 bg-white/20 hover:bg-white/30 text-white rounded-full flex items-center justify-center transition-all cursor-pointer shadow-xs mr-1 shrink-0" title="Back">
@@ -795,11 +803,9 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
                               {q.type === 'objective' && q.options && (
                                 <div className="mt-3 grid grid-cols-1 gap-2 pl-2 font-mono">
                                   {q.options.map((opt, oIdx) => (
-                                    <div key={oIdx} className="text-[11px] text-slate-700 font-bold flex items-center gap-2">
-                                      <span className={`w-2 h-2 rounded-full ${opt.isCorrect ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                                      <span className={opt.isCorrect ? 'text-emerald-700 font-black' : 'text-slate-600'}>
-                                        {String.fromCharCode(65 + oIdx)}) <SafeMathText text={opt.text} />
-                                      </span>
+                                    <div key={oIdx} className={`text-[11px] p-2.5 rounded-xl border font-bold flex justify-between items-center ${opt.isCorrect ? 'bg-emerald-50 border-emerald-200 text-emerald-900 font-black' : 'bg-[#FAF9FA] border-[#E2D5F8] text-slate-700'}`}>
+                                      <span>{String.fromCharCode(65 + oIdx)}) <SafeMathText text={opt.text} /></span>
+                                      {opt.isCorrect && <span className="text-[9px] font-black uppercase text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded shadow-2xs">✓ Correct Option Key</span>}
                                     </div>
                                   ))}
                                 </div>
@@ -836,7 +842,7 @@ export default function QuestionBuilder({ assessmentId, onNavigateBack }) {
       />
 
       <footer className="w-full border-t border-[#7C6B93]/20 bg-white py-2.5 text-center text-[10px] font-black text-[#7C6B93] tracking-wider font-mono uppercase shrink-0 px-4">
-        Start-rite intrnet institutional security matrix
+        Start-rite internet institutional security matrix
       </footer>
 
     </div>

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShieldAlert, Users, CheckCircle, Search, RotateCcw, ArrowLeft, Loader2, RefreshCw, Clock, Power, PowerOff } from 'lucide-react';
+import { ShieldAlert, Users, CheckCircle, Search, ArrowLeft, Loader2, Clock, Power, PowerOff } from 'lucide-react';
 import { apiRequest } from '../../core/api';
 import ConfirmationModal from '../../shared/ConfirmationModal';
 import Logo from '../../shared/Logo';
+import windowEcho from '../../core/echo';
 
 export default function LiveMonitor({ assessmentId, onNavigateBack }) {
   const [studentStatuses, setStudentStatuses] = useState([]);
@@ -26,7 +27,7 @@ export default function LiveMonitor({ assessmentId, onNavigateBack }) {
       const data = await response.json();
 
       if (response.ok && data.status === 'SUCCESS') {
-        setStudentStatuses(data.students || []);
+        setStudentStatuses(data.students || data.desks || []);
         setSubjectMeta(data.subject || 'COMPUTER SCIENCE');
         
         const rawScheduledEnd = 
@@ -38,16 +39,7 @@ export default function LiveMonitor({ assessmentId, onNavigateBack }) {
 
         if (rawScheduledEnd) {
           const targetTimeString = String(rawScheduledEnd).replace(' ', 'T');
-          const serverEndTime = new Date(targetTimeString).getTime();
-          
-          if (!examEndTimeRef.current || serverEndTime !== examEndTimeRef.current) {
-            examEndTimeRef.current = serverEndTime;
-          }
-        } else if (data.students && data.students.length > 0 && !examEndTimeRef.current) {
-          const maxStudentSeconds = Math.max(...data.students.map(s => parseInt(s.seconds_remaining, 10) || 0));
-          if (maxStudentSeconds > 0) {
-            examEndTimeRef.current = Date.now() + (maxStudentSeconds * 1000);
-          }
+          examEndTimeRef.current = new Date(targetTimeString).getTime();
         }
       }
     } catch (error) {
@@ -59,24 +51,27 @@ export default function LiveMonitor({ assessmentId, onNavigateBack }) {
 
   useEffect(() => {
     fetchRoomTelemetry();
-    const telemetryIntervalId = setInterval(fetchRoomTelemetry, 4000);
-    return () => clearInterval(telemetryIntervalId);
+  }, [assessmentId]);
+
+  useEffect(() => {
+    const channel = windowEcho.channel('exam-surveillance-channel');
+    const handleTelemetryPing = () => {
+      fetchRoomTelemetry();
+    };
+
+    channel.listen('.room.telemetry.updated', handleTelemetryPing);
+
+    return () => {
+      channel.stopListening('.room.telemetry.updated', handleTelemetryPing);
+      windowEcho.leaveChannel('exam-surveillance-channel');
+    };
   }, [assessmentId]);
 
   useEffect(() => {
     const tickerInterval = setInterval(() => {
       if (!examEndTimeRef.current) return;
-      
-      const remainingSeconds = Math.floor((examEndTimeRef.current - Date.now()) / 1000);
-      if (remainingSeconds <= 0) {
-        setRoomSecondsLeft(0);
-        setStudentStatuses(prev => prev.map(s => ({
-          ...s,
-          status: s.status.includes('Submitted') || s.status === 'Not Started' ? s.status : 'Finished (Ready to Grade)'
-        })));
-      } else {
-        setRoomSecondsLeft(remainingSeconds);
-      }
+      const remainingSeconds = Math.max(0, Math.floor((examEndTimeRef.current - Date.now()) / 1000));
+      setRoomSecondsLeft(remainingSeconds);
     }, 1000);
 
     return () => clearInterval(tickerInterval);
@@ -93,27 +88,7 @@ export default function LiveMonitor({ assessmentId, onNavigateBack }) {
       });
       if (response.ok) {
         triggerBannerAlert("Student screen warnings reset and unlocked successfully.", "success");
-        await fetchRoomTelemetry();
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      closeModal();
-    }
-  };
-
-  const executeNuclearResetRestart = async (studentProfileId) => {
-    try {
-      const response = await apiRequest(`api/v1/teacher/monitor/workstation/restart-exam`, {
-        method: 'POST',
-        body: JSON.stringify({
-          assessment_id: parseInt(assessmentId, 10),
-          student_profile_id: parseInt(studentProfileId, 10)
-        })
-      });
-      if (response.ok) {
-        triggerBannerAlert("Exam session flushed completely. Student workstation ready for a clean reload!", "success");
-        await fetchRoomTelemetry();
+        fetchRoomTelemetry();
       }
     } catch (err) {
       console.error(err);
@@ -137,7 +112,7 @@ export default function LiveMonitor({ assessmentId, onNavigateBack }) {
           examEndTimeRef.current += (parseInt(minutes, 10) * 60 * 1000);
         }
         triggerBannerAlert(studentProfileId ? `Successfully scheduled +${minutes} mins extra time for candidate.` : `Successfully scheduled +${minutes} mins extra time for ALL students!`, "success");
-        await fetchRoomTelemetry();
+        fetchRoomTelemetry();
       }
     } catch (err) {
       console.error(err);
@@ -158,7 +133,7 @@ export default function LiveMonitor({ assessmentId, onNavigateBack }) {
       });
       if (res.ok) {
         triggerBannerAlert(`Student exam session successfully ${!currentActiveState ? 'activated' : 'deactivated'}.`, "success");
-        await fetchRoomTelemetry();
+        fetchRoomTelemetry();
       } else {
         throw new Error('Failed');
       }
@@ -174,19 +149,27 @@ export default function LiveMonitor({ assessmentId, onNavigateBack }) {
 
   const formatSecondsToMinutes = (secs) => {
     if (secs === null || secs <= 0) return '00:00';
-    const m = Math.floor(secs / 60).toString().padStart(2, '0');
+    const hours = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60).toString().padStart(2, '0');
     const s = (secs % 60).toString().padStart(2, '0');
+    if (hours > 0) return `${hours}h ${m}m ${s}s`;
     return `${m}:${s}`;
   };
 
-  const filteredStudents = studentStatuses.filter(st => 
-    (st.student_name || st.name || '').toLowerCase().includes(searchFilter.toLowerCase()) || 
-    (st.desk || '').toLowerCase().includes(searchFilter.toLowerCase())
-  );
+  const filteredStudents = React.useMemo(() => {
+    const rawList = Array.isArray(studentStatuses) 
+      ? studentStatuses 
+      : (studentStatuses.students || studentStatuses.desks || []);
+
+    return rawList.filter(st => {
+      const name = (st.student_name || st.name || st.candidate || '').toLowerCase();
+      const deskNum = (st.desk || st.terminalId || '').toLowerCase();
+      return name.includes(searchFilter.toLowerCase()) || deskNum.includes(searchFilter.toLowerCase());
+    });
+  }, [studentStatuses, searchFilter]);
 
   return (
     <div className="min-h-screen bg-[#F7F5FC] text-[#2A1A63] font-sans flex flex-col justify-between select-none relative w-full overflow-x-hidden">
-      
       <header className="w-full bg-gradient-to-r from-[#7C3AED] via-[#8B5CF6] to-[#A78BFA] px-6 py-4 flex flex-col sm:flex-row justify-between items-center gap-3 shadow-xs sticky top-0 z-40 shrink-0">
         <div className="flex items-center gap-3 w-full sm:w-auto">
           <button onClick={onNavigateBack} className="w-9 h-9 bg-white/20 hover:bg-white/30 text-white rounded-full flex items-center justify-center transition-all cursor-pointer shadow-xs mr-1 shrink-0">
@@ -201,7 +184,6 @@ export default function LiveMonitor({ assessmentId, onNavigateBack }) {
           </div>
         </div>
 
-        {/* Mass Extra Time Buttons */}
         <div className="flex items-center bg-white/20 border border-white/30 rounded-2xl px-3 py-1.5 justify-between gap-3 text-[10px] font-bold font-mono w-full sm:w-auto shadow-2xs">
           <span className="text-white uppercase font-sans text-[9px] font-black">Extra Time (All):</span>
           <button onClick={() => setModalConfig({ isOpen: true, type: 'mass_add_5', studentId: null, studentName: 'ALL STUDENTS IN ROOM', addedMinutes: 5 })} className="px-3 py-1 bg-white hover:bg-[#7C3AED] hover:text-white border border-[#E2D5F8] rounded-xl text-slate-900 font-mono font-black transition-all cursor-pointer shadow-2xs">+5m</button>
@@ -216,14 +198,13 @@ export default function LiveMonitor({ assessmentId, onNavigateBack }) {
         </div>
       )}
 
-      {/* Summary Cards */}
       <div className="w-full max-w-7xl mx-auto px-8 mt-6 grid grid-cols-1 sm:grid-cols-4 gap-4 shrink-0 text-left">
         <div className="p-4 bg-[#F3EEFC] border border-[#E2D5F8] rounded-2xl flex items-center gap-3.5 shadow-2xs">
           <div className="w-10 h-10 bg-white border border-[#E2D5F8] rounded-xl flex items-center justify-center text-[#7C3AED] shadow-2xs">
             <Clock className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-[10px] font-sans font-bold text-[#7C6B93] uppercase block">Room Time Left</span>
+            <span className="text-[10px] font-sans font-bold text-[#7C6B93] uppercase block">Hall Access Window Left</span>
             <p className={`text-base font-black font-mono mt-0.5 ${roomSecondsLeft !== null && roomSecondsLeft <= 300 ? 'text-rose-600 animate-pulse' : 'text-slate-900'}`}>
               {roomSecondsLeft !== null ? formatSecondsToMinutes(roomSecondsLeft) : 'Synchronizing...'}
             </p>
@@ -236,7 +217,7 @@ export default function LiveMonitor({ assessmentId, onNavigateBack }) {
           </div>
           <div>
             <span className="text-[10px] font-sans font-bold text-[#7C6B93] uppercase block">Enrolled Class Roster</span>
-            <p className="text-base font-black text-slate-900 font-mono mt-0.5">{studentStatuses.length} Students</p>
+            <p className="text-base font-black text-slate-900 font-mono mt-0.5">{filteredStudents.length} Students</p>
           </div>
         </div>
         <div className="p-4 bg-[#EBFBF3] border border-[#C6F6D5] rounded-2xl flex items-center gap-3.5 shadow-2xs">
@@ -245,7 +226,9 @@ export default function LiveMonitor({ assessmentId, onNavigateBack }) {
           </div>
           <div>
             <span className="text-[10px] font-sans font-bold text-slate-600 uppercase block">Finished Papers</span>
-            <p className="text-base font-black text-slate-900 font-mono mt-0.5">{studentStatuses.filter(s => s.status.includes('Submitted') || s.is_submitted).length} Submitted</p>
+            <p className="text-base font-black text-slate-900 font-mono mt-0.5">
+              {filteredStudents.filter(s => (s.status || '').includes('Submitted') || s.is_submitted).length} Submitted
+            </p>
           </div>
         </div>
         <div className="p-4 bg-[#FCE7EE] border border-[#F8D3DF] rounded-2xl flex items-center gap-3.5 shadow-2xs">
@@ -254,7 +237,9 @@ export default function LiveMonitor({ assessmentId, onNavigateBack }) {
           </div>
           <div>
             <span className="text-[10px] font-sans font-bold text-slate-600 uppercase block">Screen Violations</span>
-            <p className="text-base font-black text-[#E11D48] font-mono mt-0.5">{studentStatuses.filter(s => (s.violations || 0) > 0 || s.status.includes('Malpractice')).length} Flagged</p>
+            <p className="text-base font-black text-[#E11D48] font-mono mt-0.5">
+              {filteredStudents.filter(s => (s.violations || s.activeStrikes || 0) > 0 || (s.status || '').includes('Malpractice')).length} Flagged
+            </p>
           </div>
         </div>
       </div>
@@ -282,31 +267,41 @@ export default function LiveMonitor({ assessmentId, onNavigateBack }) {
                   <tr>
                     <th className="p-4 pl-6">Desk No.</th>
                     <th className="p-4 font-sans">Student Name</th>
-                    <th className="p-4 text-center">Section A Progress</th>
-                    <th className="p-4 text-center">Section B Progress</th>
+                    <th className="p-4 text-center">Started At</th>
+                    <th className="p-4 text-center">Submitted At</th>
                     <th className="p-4 text-center">Warning Strikes</th>
-                    <th className="p-4 text-right pr-6 font-sans">Supervisor Controls</th>
+                    <th className="p-4 text-center">Status</th>
+                    {/* <th className="p-4 text-right pr-6 font-sans">Supervisor Controls</th> */}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E2D5F8] bg-white font-bold text-slate-700">
                   {filteredStudents.map((st, idx) => {
-                    const studentProfileId = st.student_profile_id;
-                    const nameString = (st.student_name || st.name || 'UNKNOWN CANDIDATE').toUpperCase();
-                    const violationsCount = parseInt(st.violations, 10) || 0;
-                    const statusVal = st.status || 'Not Started';
+                    const studentProfileId = st.student_profile_id || st.id;
+                    const nameString = (st.student_name || st.name || st.candidate || st.fullName || 'UNKNOWN CANDIDATE').toUpperCase();
+                    const deskLabel = st.desk || (st.terminalId ? `DESK ${st.terminalId}` : `DESK ${String(idx + 1).padStart(2, '0')}`);
+                    const violationsCount = parseInt(st.violations ?? st.activeStrikes ?? 0, 10);
+                    const statusVal = st.status || st.linkState || 'Not Started';
                     const isSubmitted = statusVal.includes('Submitted') || st.is_submitted == true;
-                    const isLobbyConnected = statusVal === 'Lobby Connected';
-                    const isNotStarted = statusVal === 'Not Started';
+                    const isLobbyConnected = statusVal === 'Lobby Connected' || statusVal === 'Connected';
                     const isActiveState = st.is_active !== false;
                     const isMalpracticeLockout = statusVal.includes('Malpractice') || violationsCount >= 3;
                     const isWriting = statusVal.includes('Writing') || statusVal.includes('Progress') || (st.objective_progress && st.objective_progress !== '0 / 0');
                     
                     return (
                       <tr key={studentProfileId || idx} className="hover:bg-[#FAF9FA] transition-all">
-                        <td className="p-4 pl-6 font-mono font-black text-slate-900 text-xs">{st.desk || 'N/A'}</td>
+                        <td className="p-4 pl-6 font-mono font-black text-slate-900 text-xs">{deskLabel}</td>
                         <td className="p-4 text-slate-900 uppercase font-black text-xs font-sans truncate max-w-[180px]">{nameString}</td>
-                        <td className="p-4 text-center text-[#7C6B93]">{st.objective_progress || '0 / 0'}</td>
-                        <td className="p-4 text-center text-[#7C6B93]">{st.theory_progress || '0 / 0'}</td>
+                        <td className="p-4 text-center font-mono text-[11px] text-slate-600">{st.started_at || '—'}</td>
+                        <td className="p-4 text-center font-mono text-[11px] text-emerald-700 font-bold">{st.submitted_at || '—'}</td>
+                        <td className="p-4 text-center">
+                          <span className={`px-2.5 py-1 rounded-lg font-mono text-[10px] font-black border uppercase ${
+                            violationsCount >= 3 ? 'bg-rose-100 border-rose-300 text-rose-700 animate-pulse' :
+                            violationsCount > 0 ? 'bg-amber-50 border-amber-300 text-amber-700' :
+                            'bg-slate-50 border-slate-200 text-slate-500'
+                          }`}>
+                            {violationsCount} / 3 Strikes
+                          </span>
+                        </td>
                         <td className="p-4 text-center">
                           <span className={`px-3 py-1 rounded-lg font-mono text-[10px] font-black border uppercase ${
                             isSubmitted ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
@@ -316,15 +311,14 @@ export default function LiveMonitor({ assessmentId, onNavigateBack }) {
                             'bg-slate-50 border-slate-200 text-slate-400'
                           }`}>
                             {isSubmitted ? '✓ SUBMITTED' :
-                             isMalpracticeLockout ? `${violationsCount} / 3 Strikes` :
+                             isMalpracticeLockout ? 'Locked Out' :
                              isWriting ? '✍️ Writing Exam' :
-                             isLobbyConnected ? '🟢 Lobby Connected' : 
+                             isLobbyConnected ? '🟢 Connected' : 
                              'Not Started'}
                           </span>
                         </td>
-                        <td className="p-4 text-right pr-6 font-sans">
+                        {/* <td className="p-4 text-right pr-6 font-sans">
                           <div className="flex gap-1.5 justify-end items-center">
-                            {/* Deactivate / Activate Button */}
                             <button
                               type="button"
                               onClick={() => setModalConfig({ 
@@ -343,16 +337,11 @@ export default function LiveMonitor({ assessmentId, onNavigateBack }) {
                               {isActiveState ? 'Deactivate' : 'Activate'}
                             </button>
 
-                            {/* Clear Strikes / Restart — SHOWN ONLY WHEN STRIKES >= 3 */}
                             {violationsCount >= 3 && !isSubmitted && (
                               <button onClick={() => setModalConfig({ isOpen: true, type: 'clear_override', studentId: studentProfileId, studentName: nameString })} className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-bold uppercase rounded-xl cursor-pointer shadow-2xs">Clear Strikes</button>
                             )}
-
-                            {isLobbyConnected && <span className="text-[10px] font-mono font-black border px-3 py-1 rounded-xl bg-blue-50 border-blue-200 text-blue-700">ONLINE</span>}
-                            {isNotStarted && <span className="text-[10px] font-mono font-black border px-3 py-1 rounded-xl bg-slate-50 border-slate-200 text-slate-400">OFFLINE</span>}
-                            {isSubmitted && <span className="text-[10px] font-mono font-black border px-3 py-1 rounded-xl bg-emerald-50 border-emerald-200 text-emerald-700">✓ SUBMITTED</span>}
                           </div>
-                        </td>
+                        </td> */}
                       </tr>
                     );
                   })}

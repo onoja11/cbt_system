@@ -1,15 +1,14 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { 
-  ArrowLeft, Search, Clock, CheckCircle2, XCircle, Edit3, 
-  Layers, BookOpen, ChevronRight, Users, Award, AlertTriangle, 
-  RotateCcw, FileSpreadsheet, BarChart3, TrendingUp, TrendingDown, 
-  UserCheck, UserX, CheckCheck, Loader2, ShieldCheck, X, Filter, Sparkles, ChevronLeft
+  ArrowLeft, Search, Edit3, 
+  BookOpen, ChevronRight, BarChart3, TrendingUp, TrendingDown, 
+  RotateCcw, Loader2, X, ChevronLeft
 } from 'lucide-react';
 import { apiRequest } from '../../core/api';
 import Logo from '../../shared/Logo';
-import GlobalTermFilterBar from '../components/GlobalTermFilterBar'; // 👈 Global Term Filter
+import GlobalTermFilterBar from '../components/GlobalTermFilterBar';
 
-export default function AdminExamAuditCenter({ onNavigateBack }) {
+export default function AdminExamAuditCenter({ onNavigateBack, adminUser }) {
   const [activeTab, setActiveTab] = useState('all'); 
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -33,16 +32,36 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
   const [isAuditLoading, setIsAuditLoading] = useState(false);
   const [actionMessage, setActionMessage] = useState(null);
 
-  // 🎯 Edit Status Modal State
-  const [editingAssessment, setEditingAssessment] = useState(null);
-  const [newStatusValue, setNewStatusValue] = useState('');
-  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
-
-  // 🎯 Highlight & Scroll State References
+  // Highlight & Scroll State References
   const [highlightedStudentId, setHighlightedStudentId] = useState(null);
   const studentRowRefs = useRef({});
 
-  const fetchMasterAssessments = async (page = 1) => {
+  const cleanStatus = (status) => String(status || '').trim().toLowerCase();
+
+  // 👑 ROLE CHECK & SUB-ADMIN SCOPE ISOLATION
+  const subAdminScope = useMemo(() => {
+    if (!adminUser) return { isSubAdmin: false, allowedClassNames: [] };
+
+    const primaryRole = (adminUser.role || '').toLowerCase();
+    const staffRole = (adminUser.staff_role || '').toLowerCase();
+    const nestedStaffRole = (adminUser.staff_profile?.staff_role || '').toLowerCase();
+    const detailsStaffRole = (adminUser.details?.staff_role || '').toLowerCase();
+
+    const isSubAdmin = primaryRole === 'sub_admin' || 
+                       staffRole === 'sub_admin' || 
+                       nestedStaffRole === 'sub_admin' || 
+                       detailsStaffRole === 'sub_admin';
+
+    if (!isSubAdmin) return { isSubAdmin: false, allowedClassNames: [] };
+
+    // Extract allowed class arm names from session allocations
+    const assignedClasses = adminUser.assigned_classes || adminUser.staff_profile?.assigned_classes || adminUser.details?.assigned_classes || [];
+    const allowedClassNames = assignedClasses.map(c => (typeof c === 'string' ? c : c.class_name || c.name)).filter(Boolean);
+
+    return { isSubAdmin: true, allowedClassNames };
+  }, [adminUser]);
+
+  const fetchMasterAssessments = useCallback(async (page = 1) => {
     try {
       const activeSession = localStorage.getItem('admin_filter_session');
       const activeTerm = localStorage.getItem('admin_filter_term');
@@ -55,15 +74,24 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
       if (res.ok) {
         const payload = await res.json();
         if (payload.status === 'SUCCESS') {
-          setAssessmentsList(payload.assessments || []);
+          let fetchedAssessments = payload.assessments || [];
+
+          // 🔒 Scope Isolation: Filter assessments for sub-admins based on assigned class arms
+          if (subAdminScope.isSubAdmin && subAdminScope.allowedClassNames.length > 0) {
+            fetchedAssessments = fetchedAssessments.filter(item => 
+              subAdminScope.allowedClassNames.includes(item.class_arm)
+            );
+          }
+
+          setAssessmentsList(fetchedAssessments);
           if (payload.last_page) setLastPage(payload.last_page);
-          if (payload.total !== undefined) setTotalRecords(payload.total);
+          if (payload.total !== undefined) setTotalRecords(subAdminScope.isSubAdmin ? fetchedAssessments.length : payload.total);
         }
       }
-    } catch (err) {
-      console.error("❌ [AUDIT REGISTRY FAULT]:", err);
+    } catch {
+      // Audit registry fetch fault handled silently
     }
-  };
+  }, [subAdminScope]);
 
   useEffect(() => {
     let isMounted = true;
@@ -74,7 +102,7 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
     };
     loadData();
     return () => { isMounted = false; };
-  }, [currentPage]);
+  }, [currentPage, fetchMasterAssessments]);
 
   const filterOptions = useMemo(() => {
     const arms = new Set();
@@ -107,14 +135,14 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
           setAuditDetails(payload.data);
         }
       }
-    } catch (err) {
-      console.error("❌ [DEEP METRICS FAULT]:", err);
+    } catch {
+      // Deep metrics retrieval fault handled silently
     } finally {
       setIsAuditLoading(false);
     }
   };
 
-  const handleReopenStudentSession = async (studentProfileId) => {
+  const handleResetStudentSession = async (studentProfileId) => {
     if (!inspectingAssessment) return;
     try {
       const res = await apiRequest(`api/v1/admin/audit/assessments/${inspectingAssessment.id}/reopen-student`, {
@@ -122,35 +150,13 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
         body: JSON.stringify({ student_profile_id: studentProfileId })
       });
       if (res.ok) {
-        setActionMessage({ type: 'success', text: 'Student session successfully reopened with timer parity!' });
+        setActionMessage({ type: 'success', text: 'Student session successfully reset with fresh timer parity!' });
         handleOpenInspectionModal(inspectingAssessment);
       } else {
-        throw new Error('Failed to reopen session');
+        throw new Error('Failed to reset session');
       }
-    } catch (err) {
-      setActionMessage({ type: 'error', text: 'Failed to reopen student session.' });
-    }
-  };
-
-  const handleUpdateAssessmentStatus = async () => {
-    if (!editingAssessment) return;
-    setIsUpdatingStatus(true);
-    try {
-      const res = await apiRequest(`api/v1/admin/audit/assessments/${editingAssessment.id}/update-status`, {
-        method: 'POST',
-        body: JSON.stringify({ status: newStatusValue })
-      });
-      if (res.ok) {
-        setEditingAssessment(null);
-        await fetchMasterAssessments(currentPage);
-      } else {
-        throw new Error('Failed to update status');
-      }
-    } catch (err) {
-      console.error("❌ [STATUS UPDATE FAULT]:", err);
-      alert("Failed to update assessment status.");
-    } finally {
-      setIsUpdatingStatus(false);
+    } catch {
+      setActionMessage({ type: 'error', text: 'Failed to reset student session.' });
     }
   };
 
@@ -166,10 +172,12 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
   const filteredAssessments = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
     return assessmentsList.filter(item => {
+      const statusLower = cleanStatus(item.status);
+
       const matchesTab = 
         activeTab === 'all' ? true :
-        activeTab === 'ready_to_grade' ? (item.status === 'Finished (Ready to Grade)' || item.status === 'Pending Grading') :
-        activeTab === 'completed' ? (item.status === 'Graded' || item.status === 'Completed') : true;
+        activeTab === 'ready_to_grade' ? (statusLower === 'finished (ready to grade)' || statusLower === 'pending grading') :
+        activeTab === 'completed' ? (statusLower === 'graded' || statusLower === 'completed') : true;
 
       const matchesQuery = !q || 
         (item.subject && item.subject.toLowerCase().includes(q)) ||
@@ -181,11 +189,13 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
       const matchesSub = selectedSubjectFilter === 'ALL' || item.subject === selectedSubjectFilter;
       const matchesStaff = selectedStaffFilter === 'ALL' || item.teacher_name === selectedStaffFilter;
 
-      return matchesTab && matchesQuery && matchesArm && matchesSub && matchesStaff;
-    });
-  }, [assessmentsList, activeTab, searchQuery, selectedArmFilter, selectedSubjectFilter, selectedStaffFilter]);
+      const matchesScope = !subAdminScope.isSubAdmin || subAdminScope.allowedClassNames.length === 0 || subAdminScope.allowedClassNames.includes(item.class_arm);
 
-  if (isLoading) {
+      return matchesTab && matchesQuery && matchesArm && matchesSub && matchesStaff && matchesScope;
+    });
+  }, [assessmentsList, activeTab, searchQuery, selectedArmFilter, selectedSubjectFilter, selectedStaffFilter, subAdminScope]);
+
+  if (isLoading && assessmentsList.length === 0) {
     return (
       <div className="min-h-screen bg-[#F7F5FC] flex flex-col justify-center items-center font-mono text-xs uppercase text-[#7C6B93] tracking-widest gap-2">
         <Loader2 className="w-5 h-5 animate-spin text-[#7C3AED]" />
@@ -211,8 +221,12 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
               <Logo size={28} showText={false} />
             </div>
             <div className="text-left">
-              <h1 className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-white">Assessment Intelligence & Audit</h1>
-              <p className="text-[10px] font-bold text-white/90 uppercase tracking-wider mt-0.5 hidden sm:block">Centralized Examination Lifecycle & Analytics</p>
+              <h1 className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-white">
+                {subAdminScope.isSubAdmin ? 'Sub-Admin Assessment Audit' : 'Assessment Intelligence & Audit'}
+              </h1>
+              <p className="text-[10px] font-bold text-white/95 uppercase tracking-wider mt-0.5 hidden sm:block">
+                {subAdminScope.isSubAdmin ? 'Authorized Class Arm Surveillance' : 'Centralized Examination Lifecycle & Analytics'}
+              </p>
             </div>
           </div>
         </div>
@@ -298,14 +312,13 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
       <main className="flex-1 bg-[#F7F5FC] px-4 sm:px-8 py-5 overflow-y-auto w-full flex flex-col justify-between">
         <div className="w-full space-y-4">
           
-          {/* 🌍 GLOBAL TERM FILTER BAR */}
           <GlobalTermFilterBar />
 
           {filteredAssessments.length === 0 ? (
             <div className="h-full flex flex-col justify-center items-center text-[#7C6B93] p-6 text-center bg-[#F3EEFC] border border-dashed border-[#E2D5F8] rounded-3xl py-16 shadow-xs max-w-md mx-auto my-auto">
               <BookOpen className="w-10 h-10 text-[#7C3AED]/40 stroke-[1.5] mb-3" />
               <p className="text-xs font-black uppercase tracking-wide font-mono">No Assessments Located</p>
-              <p className="text-xs text-slate-600 font-medium normal-case mt-1.5">No examination folders match your active filter criteria.</p>
+              <p className="text-xs text-slate-600 font-medium normal-case mt-1.5">No examination folders match your active filter criteria or scope permissions.</p>
             </div>
           ) : (
             <div className="bg-[#F3EEFC] border border-[#E2D5F8] rounded-3xl overflow-hidden shadow-xs w-full">
@@ -323,8 +336,9 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
                   </thead>
                   <tbody className="divide-y divide-[#E2D5F8] uppercase font-bold text-slate-700 bg-white">
                     {filteredAssessments.map((item, idx) => {
-                      const isGraded = item.status === 'Graded' || item.status === 'Completed';
-                      const isReady = item.status === 'Finished (Ready to Grade)' || item.status === 'Pending Grading';
+                      const statusLower = cleanStatus(item.status);
+                      const isGraded = statusLower === 'graded' || statusLower === 'completed';
+                      const isReady = statusLower === 'finished (ready to grade)' || statusLower === 'pending grading';
 
                       return (
                         <tr key={`asm-${item.id || idx}`} className="hover:bg-[#FAF9FA] transition-colors">
@@ -343,13 +357,6 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
                               }`}>
                                 {item.status || 'Draft'}
                               </span>
-                              <button
-                                onClick={() => { setEditingAssessment(item); setNewStatusValue(item.status || 'Draft'); }}
-                                className="w-6 h-6 bg-purple-50 hover:bg-purple-100 text-[#7C3AED] rounded-lg border border-purple-200 flex items-center justify-center cursor-pointer transition-all shrink-0"
-                                title="Edit Status"
-                              >
-                                <Edit3 className="w-3 h-3" />
-                              </button>
                             </div>
                           </td>
                           <td className="p-3.5 sm:p-4 text-center font-black text-slate-900">
@@ -403,41 +410,6 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
           </div>
         )}
       </main>
-
-      {/* EDIT STATUS MODAL */}
-      {editingAssessment && (
-        <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs z-[60000] flex items-center justify-center p-4">
-          <div className="bg-white border border-[#E2D5F8] w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden font-sans text-left animate-fadeIn p-5 sm:p-6 space-y-4">
-            <div className="flex justify-between items-center border-b border-[#E2D5F8] pb-3 font-mono">
-              <h3 className="text-xs font-black uppercase tracking-tight text-slate-900">Edit Assessment Status</h3>
-              <button onClick={() => setEditingAssessment(null)} className="w-7 h-7 bg-slate-100 rounded-lg flex items-center justify-center text-slate-600 hover:bg-slate-200 cursor-pointer">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="space-y-2 font-mono">
-              <label className="text-[10px] font-black uppercase text-[#7C6B93] block">Select Lifecycle State</label>
-              <select 
-                value={newStatusValue}
-                onChange={(e) => setNewStatusValue(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white border border-[#E2D5F8] text-slate-900 font-bold rounded-xl uppercase cursor-pointer focus:outline-none shadow-2xs text-xs"
-              >
-                <option value="Draft">Draft</option>
-                <option value="Exam in Progress">Exam in Progress</option>
-                <option value="Finished (Ready to Grade)">Finished (Ready to Grade)</option>
-                <option value="Pending Grading">Pending Grading</option>
-                <option value="Graded">Graded</option>
-                <option value="Completed">Completed</option>
-              </select>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setEditingAssessment(null)} className="px-4 py-2 bg-white border border-[#E2D5F8] text-xs font-black uppercase rounded-xl text-slate-600 hover:bg-slate-50 cursor-pointer">Cancel</button>
-              <button disabled={isUpdatingStatus} onClick={handleUpdateAssessmentStatus} className="px-4 py-2 bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-black uppercase rounded-xl shadow-md cursor-pointer inline-flex items-center gap-1.5 transition-all">
-                {isUpdatingStatus && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Save Status
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* MASTER DEEP INSPECTION & AUDIT MODAL */}
       {inspectingAssessment && (
@@ -522,7 +494,7 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
 
                   {/* Candidate Roster */}
                   <div className="space-y-3">
-                    <h4 className="text-xs font-black uppercase text-slate-900 font-mono tracking-wider">Candidate Participation & Reopen Console</h4>
+                    <h4 className="text-xs font-black uppercase text-slate-900 font-mono tracking-wider">Candidate Participation & Reset Console</h4>
                     
                     <div className="bg-[#F3EEFC] border border-[#E2D5F8] rounded-3xl overflow-hidden max-h-72 sm:max-h-80 overflow-y-auto shadow-xs">
                       <table className="w-full text-left border-collapse font-mono text-[11px] min-w-[700px]">
@@ -540,7 +512,9 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
                             const isHighlighted = highlightedStudentId === student.student_profile_id;
                             const isTop = auditDetails.stats.highest_student_id === student.student_profile_id;
                             const isLow = auditDetails.stats.lowest_student_id === student.student_profile_id;
-                            const isExamInProgress = inspectingAssessment.status === 'Exam in Progress';
+
+                            const assessmentStatusLower = cleanStatus(inspectingAssessment?.status);
+                            const isExamConcluded = assessmentStatusLower === 'finished (ready to grade)' || assessmentStatusLower === 'graded' || assessmentStatusLower === 'completed';
 
                             return (
                               <tr 
@@ -570,13 +544,13 @@ export default function AdminExamAuditCenter({ onNavigateBack }) {
                                 </td>
                                 <td className="p-3.5 sm:p-4 text-center pr-6 font-sans">
                                   <div className="flex items-center justify-center gap-2">
-                                    {!student.has_submitted && !isExamInProgress && (
+                                    {isExamConcluded && (
                                       <button
                                         type="button"
-                                        onClick={() => handleReopenStudentSession(student.student_profile_id)}
+                                        onClick={() => handleResetStudentSession(student.student_profile_id)}
                                         className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-mono font-bold uppercase rounded-xl transition-all inline-flex items-center gap-1 cursor-pointer shadow-md"
                                       >
-                                        <RotateCcw className="w-3 h-3 shrink-0" /> Reopen
+                                        <RotateCcw className="w-3 h-3 shrink-0" /> Reset
                                       </button>
                                     )}
                                   </div>

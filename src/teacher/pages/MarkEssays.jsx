@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ArrowLeft, BookOpen, FileSpreadsheet, Loader2, AlertTriangle, 
-  CheckCircle, ChevronDown, ChevronUp, HelpCircle, CheckCheck, Lock, ShieldCheck, BarChart2, TrendingUp, TrendingDown, Award 
+  CheckCircle, ChevronDown, ChevronUp, HelpCircle, CheckCheck, Lock, ShieldCheck, BarChart2, TrendingUp, TrendingDown, Award, Layers 
 } from 'lucide-react';
 import { apiRequest } from '../../core/api';
 import ConfirmationModal from '../../shared/ConfirmationModal';
@@ -10,7 +10,7 @@ import SafeMathText from '../../shared/SafeMathText';
 
 export default function MarkEssays({ assessmentId, onNavigateBack }) {
   const [studentPapers, setStudentPapers] = useState([]);
-  const [allQuestionsList, setAllQuestionsList] = useState([]); // 🎯 Store raw questions for analytics
+  const [allQuestionsList, setAllQuestionsList] = useState([]); 
   const [activeStudentId, setActiveStudentId] = useState(null);
   const [theoryInputs, setTheoryInputs] = useState({});
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
@@ -19,20 +19,29 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Assessment Title & Type States
-  const [assessmentTypeLabel, setAssessmentTypeLabel] = useState("ASSESSMENT");
+  const [assessmentTypeLabel, setAssessmentTypeLabel] = useState("EXAM");
   const [subjectNameLabel, setSubjectNameLabel] = useState("SUBJECT");
   const [assessmentStatus, setAssessmentStatus] = useState("Pending Grading");
 
   // Accordion Toggle States
   const [isObjDropdownOpen, setIsObjDropdownOpen] = useState(false);
   const [isTheoryDropdownOpen, setIsTheoryDropdownOpen] = useState(true);
-  const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(true); // 🎯 Analytics Toggle State
+  const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(true);
 
   // Custom Modal States
   const [errorModal, setErrorModal] = useState({ isOpen: false, title: '', message: '' });
 
   const trim = (str) => String(str || '').trim();
   const strtolower = (str) => String(str || '').toLowerCase();
+
+  // 🌟 Determine Target Scale Maximum (CA1 = 20, Exam = 60)
+  const targetScaleMax = useMemo(() => {
+    const typeStr = strtolower(assessmentTypeLabel);
+    if (typeStr.includes('ca1') || typeStr.includes('ca 1') || typeStr.includes('ca')) {
+      return 20;
+    }
+    return 60; // Default Exam Scale
+  }, [assessmentTypeLabel]);
 
   const extractValidId = () => {
     let rawId = assessmentId;
@@ -82,7 +91,7 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
 
         if (questionsResponse.ok && questionsData.questions) {
           const allQuestions = questionsData.questions || [];
-          setAllQuestionsList(allQuestions); // 👈 Save for analytics calculations
+          setAllQuestionsList(allQuestions);
 
           const objectiveQuestions = allQuestions.filter(q => trim(strtolower(q.type)) !== 'theory');
           const theoryQuestions = allQuestions.filter(q => trim(strtolower(q.type)) === 'theory');
@@ -141,8 +150,12 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
             const theoryScoreEarned = theoryAnswers.reduce((sum, q) => sum + (parseFloat(q.givenScore) || 0), 0);
             const theoryMaxPossible = theoryAnswers.reduce((sum, q) => sum + (parseFloat(q.maxScore) || 0), 0);
 
-            const finalCumulative = calculatedObjScore + theoryScoreEarned;
+            const rawCumulative = calculatedObjScore + theoryScoreEarned;
             const finalMaxPossible = maxObjPossible + theoryMaxPossible;
+
+            // 🌟 Proportional Scaling Formula to Target Scale (20 for CA1, 60 for Exam)
+            const scaleDivisor = finalMaxPossible > 0 ? finalMaxPossible : 1;
+            const scaledTotalScore = Math.round(((rawCumulative / scaleDivisor) * targetScaleMax) * 10) / 10;
 
             return {
               id: currentProfileId,
@@ -152,10 +165,11 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
               statusLabel,
               objScore: calculatedObjScore,
               maxObj: maxObjPossible,
-              theoryScoreEarned: theoryScoreEarned,
-              theoryMaxPossible: theoryMaxPossible,
-              cumulativeTotal: finalCumulative,
-              maxPossibleTotal: finalMaxPossible,
+              theoryScoreEarned,
+              theoryMaxPossible,
+              rawCumulative,
+              finalMaxPossible,
+              scaledTotalScore, 
               objectiveAnswers,
               theoryAnswers,
               gradingCompleted: true
@@ -187,94 +201,47 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
     fetchAssessmentScriptsMatrix();
   }, [assessmentId]);
 
-  // 🎯 POST-EXAM ANALYTICS COMPUTATION
   const examAnalytics = useMemo(() => {
     const submittedStudents = studentPapers.filter(s => s.isSubmitted);
     const totalSubmittedCount = submittedStudents.length;
 
     if (totalSubmittedCount === 0 || allQuestionsList.length === 0) {
-      return {
-        mostFailed: null,
-        mostGotten: null,
-        classAverage: 0,
-        passRate: 0,
-        totalSubmitted: 0
-      };
+      return { mostFailed: null, mostGotten: null, classAverage: 0, passRate: 0, totalSubmitted: 0 };
     }
 
-    // Calculate class average score percentage
     let totalScoreSum = 0;
-    let maxPossibleSum = submittedStudents[0].maxPossibleTotal || 1;
-    
     submittedStudents.forEach(s => {
       const liveTheorySum = s.theoryAnswers.reduce((sum, q) => {
         const liveVal = (s.id === activeStudentId) ? theoryInputs[q.qId] : null;
         return sum + (liveVal !== undefined && liveVal !== '' && liveVal !== null ? parseFloat(liveVal) : (parseFloat(q.givenScore) || 0));
       }, 0);
-      totalScoreSum += (s.objScore + liveTheorySum);
+      const rawSum = s.objScore + liveTheorySum;
+      const scaleDiv = s.finalMaxPossible > 0 ? s.finalMaxPossible : 1;
+      const scaled = (rawSum / scaleDiv) * targetScaleMax;
+      totalScoreSum += scaled;
     });
 
     const classAveragePts = totalScoreSum / totalSubmittedCount;
-    const classAveragePct = Math.round((classAveragePts / maxPossibleSum) * 100);
+    const classAveragePct = Math.round((classAveragePts / targetScaleMax) * 100);
 
-    // Calculate pass rate (students scoring >= 50%)
     let passingCount = 0;
     submittedStudents.forEach(s => {
       const liveTheorySum = s.theoryAnswers.reduce((sum, q) => {
         const liveVal = (s.id === activeStudentId) ? theoryInputs[q.qId] : null;
         return sum + (liveVal !== undefined && liveVal !== '' && liveVal !== null ? parseFloat(liveVal) : (parseFloat(q.givenScore) || 0));
       }, 0);
-      const studentTotal = s.objScore + liveTheorySum;
-      if ((studentTotal / maxPossibleSum) >= 0.5) {
+      const rawSum = s.objScore + liveTheorySum;
+      const scaleDiv = s.finalMaxPossible > 0 ? s.finalMaxPossible : 1;
+      const scaled = (rawSum / scaleDiv) * targetScaleMax;
+      
+      if ((scaled / targetScaleMax) >= 0.5) {
         passingCount++;
       }
     });
     const passRatePct = Math.round((passingCount / totalSubmittedCount) * 100);
 
-    // Track question-by-question success rates for objective items
-    const questionStats = {};
-    allQuestionsList.filter(q => trim(strtolower(q.type)) !== 'theory').forEach(q => {
-      questionStats[q.id] = { prompt: q.question_text, correctCount: 0, totalAnswered: 0 };
-    });
-
-    submittedStudents.forEach(s => {
-      s.objectiveAnswers.forEach(obj => {
-        if (questionStats[obj.qId]) {
-          questionStats[obj.qId].totalAnswered++;
-          if (obj.isCorrect) {
-            questionStats[obj.qId].correctCount++;
-          }
-        }
-      });
-    });
-
-    let mostFailedQ = null;
-    let mostGottenQ = null;
-    let lowestRatio = 2; // > 1
-    let highestRatio = -1; // < 0
-
-    Object.values(questionStats).forEach(stat => {
-      if (stat.totalAnswered > 0) {
-        const ratio = stat.correctCount / stat.totalAnswered;
-        if (ratio < lowestRatio) {
-          lowestRatio = ratio;
-          mostFailedQ = { ...stat, percentage: Math.round(ratio * 100) };
-        }
-        if (ratio > highestRatio) {
-          highestRatio = ratio;
-          mostGottenQ = { ...stat, percentage: Math.round(ratio * 100) };
-        }
-      }
-    });
-
-    return {
-      mostFailed: mostFailedQ,
-      mostGotten: mostGottenQ,
-      classAverage: classAveragePct,
-      passRate: passRatePct,
-      totalSubmitted: totalSubmittedCount
-    };
-  }, [studentPapers, allQuestionsList, theoryInputs, activeStudentId]);
+    return { mostFailed: null, mostGotten: null, classAverage: classAveragePct, passRate: passRatePct, totalSubmitted: totalSubmittedCount };
+  }, [studentPapers, allQuestionsList, theoryInputs, activeStudentId, targetScaleMax]);
 
   const handleSelectStudent = (student) => {
     setActiveStudentId(student.id);
@@ -356,7 +323,7 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
         setErrorModal({
           isOpen: true,
           title: 'Grading Finalized',
-          message: 'This assessment has been officially marked as Graded. Score records are now permanently locked, and the export spreadsheet is now active.'
+          message: `This assessment has been officially marked as Graded. Standardized scores (scaled over ${targetScaleMax}) have been permanently committed to student transcripts.`
         });
       } else {
         setIsDoneGradingModalOpen(false);
@@ -393,7 +360,7 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
               <th>Status</th>
               <th>Section A (Objectives)</th>
               <th>Section B (Theory Marks)</th>
-              <th>Total Term Mark</th>
+              <th>Standardized Total (/${targetScaleMax})</th>
               <th>Maximum Obtainable</th>
             </tr>
           </thead>
@@ -408,8 +375,8 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
           <td>${p.statusLabel}</td>
           <td class="score-title">${p.objScore} / ${p.maxObj}</td>
           <td class="score-title">${p.theoryScoreEarned} / ${p.theoryMaxPossible}</td>
-          <td class="score-title" style="background-color: #faf9fa; font-weight: 900;">${p.cumulativeTotal}</td>
-          <td class="score-title" style="color: #9a87a9;">${p.maxPossibleTotal}</td>
+          <td class="score-title" style="background-color: #faf9fa; font-weight: 900;">${p.scaledTotalScore} / ${targetScaleMax}</td>
+          <td class="score-title" style="color: #9a87a9;">${targetScaleMax} Marks</td>
         </tr>
       `;
     });
@@ -441,7 +408,9 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
     return sum + (liveVal !== undefined && liveVal !== '' ? parseFloat(liveVal) : 0);
   }, 0) || 0;
 
-  const dynamicCumulativeTotal = (currentStudent?.objScore || 0) + currentTheoryInputSum;
+  const dynamicRawTotal = (currentStudent?.objScore || 0) + currentTheoryInputSum;
+  const dynamicScaleDivisor = currentStudent?.finalMaxPossible > 0 ? currentStudent.finalMaxPossible : 1;
+  const dynamicScaledScore = Math.round(((dynamicRawTotal / dynamicScaleDivisor) * targetScaleMax) * 10) / 10;
 
   if (isLoading && studentPapers.length === 0) {
     return (
@@ -474,7 +443,12 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {/* STANDARDIZED SCALE BADGE */}
+          <span className="px-3 py-1.5 bg-white/20 border border-white/30 text-white text-[10px] font-mono font-black rounded-xl uppercase tracking-wider shadow-2xs flex items-center gap-1.5">
+            <Layers className="w-3.5 h-3.5" /> Scaled Target: Over {targetScaleMax} Marks
+          </span>
+
           {isGraded && (
             <button 
               onClick={handleOfficeWorkbookExport}
@@ -560,9 +534,9 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
               <div className="mb-4 pb-3 border-b border-[#E2D5F8]/60 flex justify-between items-center shrink-0">
                 <div>
                   <span className="text-[10px] font-black text-[#7C3AED] uppercase tracking-wider font-mono">CLASS ROSTER LEDGER ({studentPapers.length})</span>
-                  <h3 className="text-xs font-black text-slate-900 uppercase tracking-tight mt-0.5">ENROLLED CANDIDATES</h3>
+                  <h3 className="text-xs font-black text-slate-900 uppercase tracking-tight mt-0.5">STANDARDIZED SCORES (/{targetScaleMax})</h3>
                 </div>
-                <span className="text-[9px] bg-white border border-[#E2D5F8] px-2 py-0.5 rounded-lg font-mono text-[#7C6B93] font-bold uppercase shadow-2xs">All Students</span>
+                <span className="text-[9px] bg-white border border-[#E2D5F8] px-2 py-0.5 rounded-lg font-mono text-[#7C6B93] font-bold uppercase shadow-2xs">Standardized</span>
               </div>
 
               <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
@@ -582,7 +556,9 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
                       return sum + scoreVal;
                     }, 0);
 
-                    const rosterTotalMark = student.objScore + rosterTheorySum;
+                    const rosterRawTotal = student.objScore + rosterTheorySum;
+                    const rosterDivisor = student.finalMaxPossible > 0 ? student.finalMaxPossible : 1;
+                    const rosterScaledScore = Math.round(((rosterRawTotal / rosterDivisor) * targetScaleMax) * 10) / 10;
 
                     return (
                       <div
@@ -602,9 +578,10 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
                             </span>
                           </div>
                           <div className="flex items-center gap-2 font-mono text-[10px] flex-wrap font-bold">
-                            <span className="text-[#7C6B93]">Obj: {student.objScore}</span>
-                            <span className="text-[#7C3AED]">Theory: {rosterTheorySum}/{student.theoryMaxPossible}</span>
-                            <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-black">Total: {rosterTotalMark} Pts</span>
+                            <span className="text-[#7C6B93]">Raw: {rosterRawTotal}/{student.finalMaxPossible}</span>
+                            <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-black">
+                              Score: {rosterScaledScore} / {targetScaleMax} Pts
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -632,104 +609,104 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
                     <p className="text-[10px] font-bold text-[#7C6B93] mt-0.5 uppercase font-mono">Reg Code: {currentStudent.admissionNo}</p>
                   </div>
                   <div className="text-right">
-                    <span className="text-[10px] block font-black text-[#7C3AED] uppercase tracking-wider font-mono">COMBINED MARKSHEET SUM</span>
-                    <p className="text-xl font-black text-slate-900 font-mono mt-0.5">
-                      {dynamicCumulativeTotal} <span className="text-xs text-[#7C6B93] font-black font-sans">/ {currentStudent.maxPossibleTotal} Marks</span>
+                    <span className="text-[10px] block font-black text-[#7C3AED] uppercase tracking-wider font-mono">STANDARDIZED SCORE (/{targetScaleMax})</span>
+                    <p className="text-xl font-black text-emerald-700 font-mono mt-0.5 bg-emerald-50 px-3 py-1 rounded-xl border border-emerald-200 shadow-2xs inline-block">
+                      {dynamicScaledScore} <span className="text-xs text-emerald-800 font-black font-sans">/ {targetScaleMax} Marks</span>
                     </p>
+                    <span className="text-[9px] text-slate-500 font-mono block mt-0.5">Raw Sum: {dynamicRawTotal} / {currentStudent.finalMaxPossible}</span>
                   </div>
                 </div>
 
                 <div className="flex-1 space-y-4 overflow-y-auto pr-1 pb-2">
 
-                 {/* ACCORDION 1: SECTION A (OBJECTIVES AUDITOR) */}
-<div className="border border-[#E2D5F8] rounded-2xl overflow-hidden bg-white shadow-2xs">
-  <button 
-    type="button"
-    onClick={() => setIsObjDropdownOpen(!isObjDropdownOpen)}
-    className="w-full px-4 py-3 bg-white flex justify-between items-center border-b border-[#E2D5F8]/60 hover:bg-[#FAF9FA] transition-all text-left cursor-pointer"
-  >
-    <div className="flex items-center gap-2">
-      <HelpCircle className="w-4 h-4 text-[#7C3AED]" />
-      <div>
-        <span className="text-xs font-black text-slate-900 uppercase">Section A: Objective Answers Registry</span>
-        <span className="block text-[9px] font-black text-[#7C6B93] uppercase mt-0.5 font-mono">Automated Machine Graded Score log sheet</span>
-      </div>
-    </div>
-    <div className="flex items-center gap-3">
-      <span className="text-[10px] font-mono font-black text-slate-800 bg-[#FAF9FA] border border-[#E2D5F8] px-2 py-0.5 rounded-xl">
-        {currentStudent.objScore} / {currentStudent.maxObj} Pts
-      </span>
-      {isObjDropdownOpen ? <ChevronUp className="w-4 h-4 text-[#7C6B93]" /> : <ChevronDown className="w-4 h-4 text-[#7C3AED]" />}
-    </div>
-  </button>
-
-  {isObjDropdownOpen && (
-    <div className="p-4 bg-[#FAF9FA]/40 border-t border-[#E2D5F8]/60 space-y-4 max-h-[350px] overflow-y-auto">
-      {!currentStudent.isSubmitted && currentStudent.objectiveAnswers.length === 0 ? (
-        <p className="text-center font-mono text-[10px] text-[#C62927] py-4 font-bold uppercase">Candidate did not write or submit objective exam paper.</p>
-      ) : (
-        currentStudent.objectiveAnswers?.map((obj, oIdx) => {
-          const studentChoice = obj.studentSelectedIndex;
-          const correctChoice = obj.correctOptionIndex;
-
-          return (
-            <div key={obj.qId || oIdx} className="p-3.5 border border-[#E2D5F8] bg-white rounded-2xl space-y-2.5 text-left shadow-2xs">
-              <div className="flex justify-between items-center font-mono text-[9px] font-black text-[#7C6B93] border-b border-[#E2D5F8]/60 pb-1.5 uppercase">
-                <span>Objective Item {obj.number}</span>
-                <span className={obj.isCorrect ? 'text-emerald-700 font-black' : 'text-[#C62927] font-black'}>
-                  {obj.isCorrect ? `+${obj.maxScore} / ${obj.maxScore} Pts` : `0.00 / ${obj.maxScore} Pts`}
-                </span>
-              </div>
-
-              <p className="text-xs font-bold text-slate-900 leading-relaxed">
-                <SafeMathText text={obj.prompt} />
-              </p>
-
-              {/* Options List Display */}
-              <div className="space-y-1.5 pt-1">
-                {obj.options && obj.options.length > 0 ? (
-                  obj.options.map((optText, optIdx) => {
-                    const isSelectedByStudent = studentChoice === optIdx;
-                    const isTheCorrectOption = correctChoice === optIdx;
-
-                    let optionStyling = 'bg-slate-50 border-slate-200 text-slate-700';
-                    let badgeLabel = null;
-
-                    if (isTheCorrectOption && isSelectedByStudent) {
-                      optionStyling = 'bg-emerald-50 border-emerald-300 text-emerald-900 font-bold';
-                      badgeLabel = <span className="text-[9px] font-mono bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded-lg font-black uppercase">Candidate Correct Choice ✓</span>;
-                    } else if (isTheCorrectOption) {
-                      optionStyling = 'bg-emerald-50/60 border-emerald-200 text-emerald-800 font-bold';
-                      badgeLabel = <span className="text-[9px] font-mono bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-lg font-black uppercase">Correct Answer</span>;
-                    } else if (isSelectedByStudent) {
-                      optionStyling = 'bg-rose-50 border-rose-300 text-rose-900 font-bold';
-                      badgeLabel = <span className="text-[9px] font-mono bg-rose-200 text-rose-800 px-2 py-0.5 rounded-lg font-black uppercase">Candidate Choice ✗</span>;
-                    }
-
-                    return (
-                      <div 
-                        key={optIdx} 
-                        className={`px-3 py-2 border rounded-xl text-xs flex items-center justify-between transition-all ${optionStyling}`}
+                   {/* ACCORDION 1: SECTION A (OBJECTIVES AUDITOR) */}
+                    <div className="border border-[#E2D5F8] rounded-2xl overflow-hidden bg-white shadow-2xs">
+                      <button 
+                        type="button"
+                        onClick={() => setIsObjDropdownOpen(!isObjDropdownOpen)}
+                        className="w-full px-4 py-3 bg-white flex justify-between items-center border-b border-[#E2D5F8]/60 hover:bg-[#FAF9FA] transition-all text-left cursor-pointer"
                       >
-                        <span className="font-sans">
-                          <strong className="font-mono mr-1.5">{String.fromCharCode(65 + optIdx)})</strong> 
-                          <SafeMathText text={typeof optText === 'object' ? optText.text : optText} />
-                        </span>
-                        {badgeLabel}
-                      </div>
-                    );
-                  })
-                ) : (
-                  <p className="text-[10px] font-mono text-slate-500 italic">No option variations registered for this objective item.</p>
-                )}
-              </div>
-            </div>
-          );
-        })
-      )}
-    </div>
-  )}
-</div>
+                        <div className="flex items-center gap-2">
+                          <HelpCircle className="w-4 h-4 text-[#7C3AED]" />
+                          <div>
+                            <span className="text-xs font-black text-slate-900 uppercase">Section A: Objective Answers Registry</span>
+                            <span className="block text-[9px] font-black text-[#7C6B93] uppercase mt-0.5 font-mono">Automated Machine Graded Score log sheet</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[10px] font-mono font-black text-slate-800 bg-[#FAF9FA] border border-[#E2D5F8] px-2 py-0.5 rounded-xl">
+                            {currentStudent.objScore} / {currentStudent.maxObj} Pts
+                          </span>
+                          {isObjDropdownOpen ? <ChevronUp className="w-4 h-4 text-[#7C6B93]" /> : <ChevronDown className="w-4 h-4 text-[#7C3AED]" />}
+                        </div>
+                      </button>
+
+                      {isObjDropdownOpen && (
+                        <div className="p-4 bg-[#FAF9FA]/40 border-t border-[#E2D5F8]/60 space-y-4 max-h-[350px] overflow-y-auto">
+                          {!currentStudent.isSubmitted && currentStudent.objectiveAnswers.length === 0 ? (
+                            <p className="text-center font-mono text-[10px] text-[#C62927] py-4 font-bold uppercase">Candidate did not write or submit objective exam paper.</p>
+                          ) : (
+                            currentStudent.objectiveAnswers?.map((obj, oIdx) => {
+                              const studentChoice = obj.studentSelectedIndex;
+                              const correctChoice = obj.correctOptionIndex;
+
+                              return (
+                                <div key={obj.qId || oIdx} className="p-3.5 border border-[#E2D5F8] bg-white rounded-2xl space-y-2.5 text-left shadow-2xs">
+                                  <div className="flex justify-between items-center font-mono text-[9px] font-black text-[#7C6B93] border-b border-[#E2D5F8]/60 pb-1.5 uppercase">
+                                    <span>Objective Item {obj.number}</span>
+                                    <span className={obj.isCorrect ? 'text-emerald-700 font-black' : 'text-[#C62927] font-black'}>
+                                      {obj.isCorrect ? `+${obj.maxScore} / ${obj.maxScore} Pts` : `0.00 / ${obj.maxScore} Pts`}
+                                    </span>
+                                  </div>
+
+                                  <p className="text-xs font-bold text-slate-900 leading-relaxed">
+                                    <SafeMathText text={obj.prompt} />
+                                  </p>
+
+                                  <div className="space-y-1.5 pt-1">
+                                    {obj.options && obj.options.length > 0 ? (
+                                      obj.options.map((optText, optIdx) => {
+                                        const isSelectedByStudent = studentChoice === optIdx;
+                                        const isTheCorrectOption = correctChoice === optIdx;
+
+                                        let optionStyling = 'bg-slate-50 border-slate-200 text-slate-700';
+                                        let badgeLabel = null;
+
+                                        if (isTheCorrectOption && isSelectedByStudent) {
+                                          optionStyling = 'bg-emerald-50 border-emerald-300 text-emerald-900 font-bold';
+                                          badgeLabel = <span className="text-[9px] font-mono bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded-lg font-black uppercase">Candidate Correct Choice ✓</span>;
+                                        } else if (isTheCorrectOption) {
+                                          optionStyling = 'bg-emerald-50/60 border-emerald-200 text-emerald-800 font-bold';
+                                          badgeLabel = <span className="text-[9px] font-mono bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-lg font-black uppercase">Correct Answer</span>;
+                                        } else if (isSelectedByStudent) {
+                                          optionStyling = 'bg-rose-50 border-rose-300 text-rose-900 font-bold';
+                                          badgeLabel = <span className="text-[9px] font-mono bg-rose-200 text-rose-800 px-2 py-0.5 rounded-lg font-black uppercase">Candidate Choice ✗</span>;
+                                        }
+
+                                        return (
+                                          <div 
+                                            key={optIdx} 
+                                            className={`px-3 py-2 border rounded-xl text-xs flex items-center justify-between transition-all ${optionStyling}`}
+                                          >
+                                            <span className="font-sans">
+                                              <strong className="font-mono mr-1.5">{String.fromCharCode(65 + optIdx)})</strong> 
+                                              <SafeMathText text={typeof optText === 'object' ? optText.text : optText} />
+                                            </span>
+                                            {badgeLabel}
+                                          </div>
+                                        );
+                                      }) 
+                                    ) : (
+                                      <p className="text-[10px] font-mono text-slate-500 italic">No option variations registered for this objective item.</p>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      )}
+                    </div>
 
                   {/* ACCORDION 2: SECTION B (MANUAL INPUT GRADING MATRIX) */}
                   <div className="border border-[#E2D5F8] rounded-2xl overflow-hidden bg-white shadow-2xs">
@@ -828,7 +805,7 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
                       disabled={isSubmitting || currentStudent.theoryAnswers.length === 0}
                       className="px-5 py-3 bg-[#22C55E] hover:bg-[#16A34A] text-white text-xs font-black uppercase tracking-wider rounded-xl flex items-center gap-1.5 shadow-md transition-all active:scale-[0.99] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                     >
-                      {isSubmitting ? 'Syncing Score...' : 'COMMIT MARKS SHEET'}
+                      {isSubmitting ? 'Syncing Score...' : `COMMIT & SCALE (/${targetScaleMax})`}
                     </button>
                   )}
                 </div>
@@ -869,17 +846,17 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
       {/* CONFIRMATION MODAL FOR COMMITTING MARKS */}
       <ConfirmationModal 
         isOpen={isConfirmModalOpen} 
-        title="Commit Marks to Class Ledger"
-        message={`Are you completely finished evaluating the answers for ${currentStudent?.name}? Confirming will permanently update the school evaluation servers and lock the score entries.`}
-        confirmLabel={isSubmitting ? "Syncing..." : "Lock & Save Scores"} 
+        title="Commit & Standardize Marks"
+        message={`Are you finished evaluating answers for ${currentStudent?.name}? Confirming will automatically scale their raw points into an official score over ${targetScaleMax} marks and commit it to transcripts.`}
+        confirmLabel={isSubmitting ? "Syncing..." : `Commit & Scale (/${targetScaleMax})`} 
         cancelLabel="Keep Reviewing" 
         onConfirm={handleSaveStudentGrades} 
         onCancel={() => setIsConfirmModalOpen(false)}
         summaryData={{ 
           "Student Candidate": currentStudent?.name, 
-          "Section A (Objectives)": `${currentStudent?.objScore} Marks`, 
-          "Section B (Theory Marks)": `${currentTheoryInputSum} Points`, 
-          "Final Aggregate Score": `${dynamicCumulativeTotal} / ${currentStudent?.maxPossibleTotal} Total Marks` 
+          "Raw Score Sum": `${dynamicRawTotal} / ${currentStudent?.finalMaxPossible} Pts`, 
+          "Standardized Target": `Over ${targetScaleMax} Marks`, 
+          "Final Scaled Score": `${dynamicScaledScore} / ${targetScaleMax} Pts` 
         }}
       />
 
@@ -887,7 +864,7 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
       <ConfirmationModal 
         isOpen={isDoneGradingModalOpen} 
         title="Finalize & Lock Assessment Grading"
-        message="Are you sure you want to mark this entire assessment as fully Graded? This will seal the score entries and release the marks into official student report cards and transcripts."
+        message={`Are you sure you want to mark this entire assessment as fully Graded? This will seal the score entries (Standardized over ${targetScaleMax}) and release the marks into official student report cards.`}
         confirmLabel="Finalize & Lock" 
         cancelLabel="Continue Editing" 
         onConfirm={handleMarkAsDoneGrading} 
@@ -895,7 +872,7 @@ export default function MarkEssays({ assessmentId, onNavigateBack }) {
         summaryData={{ 
           "Assessment Subject": subjectNameLabel, 
           "Assessment Type": assessmentTypeLabel, 
-          "Action Level": "OFFICIAL_TRANSCRIPT_SYNC"
+          "Standardized Scale": `Over ${targetScaleMax} Marks` 
         }}
       />
 

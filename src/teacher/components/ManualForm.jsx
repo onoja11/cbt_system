@@ -72,8 +72,8 @@ export default function ManualForm({
           </div>
         ) : (
           <div>
-            <label className="block text-[10px] font-black text-[#2A1A63] uppercase tracking-wider mb-1.5 font-mono">Theory Grading Rubric Criteria</label>
-            <textarea rows={3} value={theoryRubric} onChange={(e) => setTheoryRubric(e.target.value)} placeholder="Type grading guidelines rubrics..." className="w-full p-3 bg-white border border-[#E2D5F8] text-xs font-mono text-slate-800 rounded-xl focus:outline-none focus:border-[#7C3AED] shadow-2xs resize-none" />
+            {/* <label className="block text-[10px] font-black text-[#2A1A63] uppercase tracking-wider mb-1.5 font-mono">Theory Grading Rubric Criteria</label>
+            <textarea rows={3} value={theoryRubric} onChange={(e) => setTheoryRubric(e.target.value)} placeholder="Type grading guidelines rubrics..." className="w-full p-3 bg-white border border-[#E2D5F8] text-xs font-mono text-slate-800 rounded-xl focus:outline-none focus:border-[#7C3AED] shadow-2xs resize-none" /> */}
           </div>
         )}
       </div>
