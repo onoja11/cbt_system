@@ -242,9 +242,9 @@ export default function ExamScheduler({ onNavigateBack, adminUser }) {
                         <button onClick={() => initExamConfigMode(exam)} className="px-3.5 py-2 bg-white border border-[#E2D5F8] hover:border-[#7C3AED] text-slate-800 text-xs font-mono font-black uppercase rounded-xl flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs">
                           <Settings className="w-3.5 h-3.5 text-[#7C3AED]" /> Set Access Point Window
                         </button>
-                        <button disabled={isProcessing} onClick={() => triggerLaunchConfirmation(exam.id, exam.subject, exam.arm || exam.class_arm)} className="px-4 py-2 bg-[#22C55E] hover:bg-[#16A34A] disabled:bg-slate-300 text-white text-xs font-mono font-black uppercase rounded-xl flex items-center justify-center gap-2 shadow-md cursor-pointer transition-all active:scale-[0.97]">
+                        {/* <button disabled={isProcessing} onClick={() => triggerLaunchConfirmation(exam.id, exam.subject, exam.arm || exam.class_arm)} className="px-4 py-2 bg-[#22C55E] hover:bg-[#16A34A] disabled:bg-slate-300 text-white text-xs font-mono font-black uppercase rounded-xl flex items-center justify-center gap-2 shadow-md cursor-pointer transition-all active:scale-[0.97]">
                           <Play className="w-3.5 h-3.5 fill-current" /> Force Launch Now
-                        </button>
+                        </button> */}
                       </>
                     )}
                   </div>
