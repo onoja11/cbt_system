@@ -1,16 +1,20 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { ArrowLeft, Search, Users, GraduationCap, BookOpen, User, Layers, Loader2, X, Eye, RefreshCw, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { 
+  ArrowLeft, Search, Users, GraduationCap, BookOpen, User, Layers, Loader2, X, Eye, EyeOff,
+  RefreshCw, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight 
+} from 'lucide-react';
 import { apiRequest, BASE_URL } from '../../core/api';
 import Logo from '../../shared/Logo';
 
 export default function AdminUsersDirectory({ onNavigateBack }) {
-  const [activeTab, setActiveTab] = useState('students'); // 'students', 'staff', 'subjects'
+  const [activeTab, setActiveTab] = useState('students');
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedFilterArm, setSelectedFilterArm] = useState('ALL');
   const [selectedFilterSubject, setSelectedFilterSubject] = useState('ALL');
   
-  // Pagination State
+  const [visiblePasswords, setVisiblePasswords] = useState({});
+
   const [currentPage, setCurrentPage] = useState(1);
   const [lastPage, setLastPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
@@ -29,16 +33,15 @@ export default function AdminUsersDirectory({ onNavigateBack }) {
   const [selectedStaff, setSelectedStaff] = useState(null);
   const [selectedClassArmSubjects, setSelectedClassArmSubjects] = useState(null);
 
-  // 🎯 Clean Debounce Handler for Search Bar
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery);
-      setCurrentPage(1); // Reset to page 1 on search change
+      setCurrentPage(1);
     }, 350);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const fetchDirectoryRegistry = async (page = 1, search = '') => {
+  const fetchDirectoryRegistry = useCallback(async (page = 1, search = '') => {
     setIsLoading(true);
     try {
       const searchParam = search ? `&search=${encodeURIComponent(search)}` : '';
@@ -47,7 +50,6 @@ export default function AdminUsersDirectory({ onNavigateBack }) {
       if (response.ok) {
         const payload = await response.json();
         if (payload.status === 'SUCCESS') {
-          // Students Data & Pagination Metadata
           const rawStudents = payload.students?.data || payload.students || [];
           setStudentsData(rawStudents);
           
@@ -56,7 +58,6 @@ export default function AdminUsersDirectory({ onNavigateBack }) {
             setTotalRecords(payload.students.total || rawStudents.length);
           }
 
-          // Staff Data & Pagination Metadata
           const rawStaff = payload.staff?.data || payload.staff || [];
           setStaffData(rawStaff);
           
@@ -65,7 +66,6 @@ export default function AdminUsersDirectory({ onNavigateBack }) {
             setTotalRecords(payload.staff.total || rawStaff.length);
           }
 
-          // Subjects Matrix & Metadata
           setCurriculumData(payload.curriculum_matrix || []);
           if (activeTab === 'subjects') {
             setTotalRecords((payload.curriculum_matrix || []).length);
@@ -77,20 +77,19 @@ export default function AdminUsersDirectory({ onNavigateBack }) {
         }
       }
     } catch (err) {
-      console.error("❌ [DIRECTORY INGESTION FAULT]:", err);
+      console.error("Directory Ingestion Fault:", err);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [activeTab, itemsPerPage]);
 
-  // Re-fetch when tab or page or debounced search changes
   useEffect(() => {
     let isMounted = true;
     if (isMounted) {
       fetchDirectoryRegistry(currentPage, debouncedSearch);
     }
     return () => { isMounted = false; };
-  }, [currentPage, debouncedSearch, activeTab]);
+  }, [currentPage, debouncedSearch, activeTab, fetchDirectoryRegistry]);
 
   const handleTabSwitch = (tab) => {
     setActiveTab(tab);
@@ -103,7 +102,7 @@ export default function AdminUsersDirectory({ onNavigateBack }) {
     setIsSyncing(true);
     setNotification(null);
     try {
-      const token = localStorage.getItem('intranet_access_token');
+      const token = localStorage.getItem('intranet_bearer_token');
 
       const response = await fetch(`${BASE_URL}/api/v1/admin/sync-legacy`, {
         method: 'POST',
@@ -126,15 +125,18 @@ export default function AdminUsersDirectory({ onNavigateBack }) {
         throw new Error(payload.message || 'Sync operation returned an exception.');
       }
     } catch (err) {
-      console.error("❌ [SYNC EXCEPTION]:", err);
       setNotification({
         type: 'error',
         message: err.message || 'Failed to communicate with Start-Rite legacy portal server.'
       });
     } finally {
       setIsSyncing(false);
-      setTimeout(() => setNotification(null), 6000);
+      // Auto-dismiss timer removed here so notification stays until user clicks 'X'
     }
+  };
+
+  const togglePasswordVisibility = (studentId) => {
+    setVisiblePasswords(prev => ({ ...prev, [studentId]: !prev[studentId] }));
   };
 
   const filteredCollection = useMemo(() => {
@@ -170,7 +172,7 @@ export default function AdminUsersDirectory({ onNavigateBack }) {
   return (
     <div className="h-screen bg-[#F7F5FC] flex flex-col justify-between select-none text-[#2A1A63] font-sans w-full overflow-hidden text-left">
       
-      {/* Header Banner - Fully Responsive */}
+      {/* HEADER BANNER */}
       <header className="w-full bg-gradient-to-r from-[#7C3AED] via-[#8B5CF6] to-[#A78BFA] px-4 sm:px-6 py-3.5 flex flex-col sm:flex-row justify-between items-center gap-3 shadow-xs sticky top-0 z-40 shrink-0">
         <div className="flex items-center gap-3 w-full sm:w-auto">
           <button 
@@ -192,7 +194,6 @@ export default function AdminUsersDirectory({ onNavigateBack }) {
           </div>
         </div>
 
-        {/* 3-Way Tab Switcher - Responsive Scrollable Bar */}
         <div className="flex bg-white/20 p-1 rounded-2xl border border-white/30 font-mono text-[10px] font-bold gap-1 w-full sm:w-auto justify-center overflow-x-auto">
           <button 
             onClick={() => handleTabSwitch('students')}
@@ -221,7 +222,7 @@ export default function AdminUsersDirectory({ onNavigateBack }) {
         </div>
       </header>
 
-      {/* Control Filter Strip & Sync Action - Responsive Stack */}
+      {/* FILTER CONTROL STRIP */}
       <div className="w-full bg-white border-b border-[#E2D5F8] px-4 sm:px-8 py-3 flex flex-col md:flex-row items-center justify-between gap-3 shrink-0 shadow-2xs">
         <div className="relative w-full md:max-w-md bg-white border border-[#E2D5F8] rounded-2xl shadow-2xs overflow-hidden">
           <Search className="w-4 h-4 text-[#7C6B93] absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -266,7 +267,6 @@ export default function AdminUsersDirectory({ onNavigateBack }) {
             </div>
           )}
 
-          {/* 🎯 SYNC LEGACY PORTAL BUTTON */}
           <button
             onClick={handleTriggerSync}
             disabled={isSyncing}
@@ -278,7 +278,6 @@ export default function AdminUsersDirectory({ onNavigateBack }) {
         </div>
       </div>
 
-      {/* Notification Banner Toast */}
       {notification && (
         <div className={`mx-4 sm:mx-8 mt-3 p-3.5 rounded-2xl flex items-center justify-between font-mono text-xs shadow-md border animate-fadeIn shrink-0 ${
           notification.type === 'success' 
@@ -286,23 +285,16 @@ export default function AdminUsersDirectory({ onNavigateBack }) {
             : 'bg-rose-50 border-rose-200 text-rose-800'
         }`}>
           <div className="flex items-center gap-2.5 font-bold truncate pr-2">
-            {notification.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            ) : (
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-            )}
+            {notification.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />}
             <span className="truncate">{notification.message}</span>
           </div>
-          <button 
-            onClick={() => setNotification(null)}
-            className="w-6 h-6 rounded-lg hover:bg-black/5 flex items-center justify-center cursor-pointer transition-all shrink-0"
-          >
+          <button onClick={() => setNotification(null)} className="w-6 h-6 rounded-lg hover:bg-black/5 flex items-center justify-center cursor-pointer transition-all shrink-0">
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
 
-      {/* Main Content Area */}
+      {/* MAIN DATA VIEW */}
       <main className="flex-1 bg-[#F7F5FC] px-4 sm:px-8 py-5 overflow-y-auto h-full space-y-5 flex flex-col justify-between">
         <div className="w-full">
           {filteredCollection.length === 0 ? (
@@ -314,28 +306,56 @@ export default function AdminUsersDirectory({ onNavigateBack }) {
           ) : activeTab === 'students' ? (
             <div className="bg-[#F3EEFC] border border-[#E2D5F8] rounded-3xl overflow-hidden shadow-xs w-full">
               <div className="overflow-x-auto w-full">
-                <table className="w-full text-left border-collapse font-mono text-[11px] min-w-[650px]">
+                <table className="w-full text-left border-collapse font-mono text-[11px] min-w-[750px]">
                   <thead>
                     <tr className="bg-[#7C3AED] text-white font-black uppercase text-[10px] tracking-wider border-b border-[#E2D5F8]">
                       <th className="p-3.5 sm:p-4 pl-6">Admission No</th>
                       <th className="p-3.5 sm:p-4 font-sans">Full Name</th>
                       <th className="p-3.5 sm:p-4">Class Arm</th>
                       <th className="p-3.5 sm:p-4">Email Address</th>
+                      <th className="p-3.5 sm:p-4 text-center">Password</th>
                       <th className="p-3.5 sm:p-4 text-center pr-6 font-sans">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#E2D5F8] uppercase font-bold text-slate-700 bg-white">
-                    {filteredCollection.map((item, idx) => (
-                      <tr key={`student-${item.id || idx}`} className="hover:bg-[#FAF9FA] transition-colors">
-                        <td className="p-3.5 sm:p-4 pl-6 text-[#7C6B93] font-black">{item.admission_no}</td>
-                        <td className="p-3.5 sm:p-4 font-sans font-black text-slate-950 text-xs truncate max-w-[150px] sm:max-w-none">{item.name}</td>
-                        <td className="p-3.5 sm:p-4 font-black text-[#7C3AED]">{item.class_arm || 'Unassigned'}</td>
-                        <td className="p-3.5 sm:p-4 text-slate-500 lowercase font-medium truncate max-w-[150px] sm:max-w-none">{item.email || 'N/A'}</td>
-                        <td className="p-3.5 sm:p-4 text-center pr-6 font-sans text-[10px]">
-                          <span className="text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg font-black border border-emerald-200 inline-block">Active</span>
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredCollection.map((item, idx) => {
+                      const studentId = item.id || item.student_profile_id || idx;
+                      const rawPassword = item.password || item.plain_password || item.raw_password || item.access_code || null;
+                      const isRevealed = Boolean(visiblePasswords[studentId]);
+
+                      return (
+                        <tr key={`student-${studentId}`} className="hover:bg-[#FAF9FA] transition-colors">
+                          <td className="p-3.5 sm:p-4 pl-6 text-[#7C6B93] font-black">{item.admission_no}</td>
+                          <td className="p-3.5 sm:p-4 font-sans font-black text-slate-950 text-xs truncate max-w-[150px] sm:max-w-none">{item.name}</td>
+                          <td className="p-3.5 sm:p-4 font-black text-[#7C3AED]">{item.class_arm || 'Unassigned'}</td>
+                          <td className="p-3.5 sm:p-4 text-slate-500 lowercase font-medium truncate max-w-[150px] sm:max-w-none">{item.email || 'N/A'}</td>
+                          
+                          <td className="p-3.5 sm:p-4 text-center font-mono text-xs">
+                            {rawPassword ? (
+                              <div className="inline-flex items-center gap-2 bg-[#F7F5FC] border border-[#E2D5F8] px-2.5 py-1 rounded-xl">
+                                <span className={`font-mono font-black ${isRevealed ? 'text-purple-700 tracking-normal' : 'text-slate-400 tracking-widest text-[10px]'}`}>
+                                  {isRevealed ? rawPassword : '••••••••'}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => togglePasswordVisibility(studentId)}
+                                  className="text-[#7C6B93] hover:text-[#7C3AED] p-0.5 rounded-md transition-colors cursor-pointer"
+                                  title={isRevealed ? "Hide Password" : "View Password"}
+                                >
+                                  {isRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 normal-case font-normal text-[10px]">N/A</span>
+                            )}
+                          </td>
+
+                          <td className="p-3.5 sm:p-4 text-center pr-6 font-sans text-[10px]">
+                            <span className="text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg font-black border border-emerald-200 inline-block">Active</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -441,7 +461,7 @@ export default function AdminUsersDirectory({ onNavigateBack }) {
           )}
         </div>
 
-        {/* 📄 Pagination Footer Bar - Responsive */}
+        {/* PAGINATION FOOTER */}
         {totalRecords > 0 && activeTab !== 'subjects' && (
           <div className="w-full bg-white border border-[#E2D5F8] px-4 sm:px-6 py-3 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 font-mono text-[11px] shadow-2xs mt-4 shrink-0">
             <span className="text-[#7C6B93] font-bold uppercase text-center sm:text-left">
@@ -473,10 +493,10 @@ export default function AdminUsersDirectory({ onNavigateBack }) {
         )}
       </main>
 
-      {/* Staff Details Modal - Fully Responsive */}
+      {/* STAFF DETAILS MODAL */}
       {selectedStaff && (
         <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs z-[50000] flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-white border border-[#E2D5F8] w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden font-sans text-left animate-fadeIn">
+          <div className="bg-white border border-[#E2D5F8] w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden font-sans text-left">
             <div className="bg-gradient-to-r from-[#7C3AED] via-[#8B5CF6] to-[#A78BFA] text-white p-4 sm:p-5 flex justify-between items-center font-mono">
               <div className="min-w-0 pr-2">
                 <span className="text-[9px] sm:text-[10px] font-bold text-white/80 uppercase tracking-wider block">Staff Personnel Profile</span>
@@ -538,10 +558,10 @@ export default function AdminUsersDirectory({ onNavigateBack }) {
         </div>
       )}
 
-      {/* Class Arm Subjects Detailed Modal - Fully Responsive */}
+      {/* CURRICULUM MODAL */}
       {selectedClassArmSubjects && (
         <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs z-[50000] flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-white border border-[#E2D5F8] w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden font-sans text-left animate-fadeIn">
+          <div className="bg-white border border-[#E2D5F8] w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden font-sans text-left">
             <div className="bg-gradient-to-r from-[#7C3AED] via-[#8B5CF6] to-[#A78BFA] text-white p-4 sm:p-5 flex justify-between items-center font-mono">
               <div className="flex items-center gap-3 min-w-0 pr-2">
                 <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center text-white shrink-0">

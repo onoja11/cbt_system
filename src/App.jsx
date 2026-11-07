@@ -32,6 +32,7 @@ export default function App() {
   const [teacherFolderContext, setTeacherFolderContext] = useState(null);
   const [selectedAssessmentId, setSelectedAssessmentId] = useState(null);
   const [selectedAdminLiveSession, setSelectedAdminLiveSession] = useState(null);
+  const [isAdminViewerMode, setIsAdminViewerMode] = useState(false);
 
   const sanitizeIncomingId = (idInput) => {
     if (!idInput) return null;
@@ -93,6 +94,7 @@ export default function App() {
     setTeacherFolderContext(null);
     setSelectedAssessmentId(null);
     setSelectedAdminLiveSession(null);
+    setIsAdminViewerMode(false);
     setCurrentDomain('login');
   };
 
@@ -181,18 +183,45 @@ export default function App() {
         />
       )}
 
-      {currentDomain === 'admin_classes' && <AdminClassesDirectory onNavigateBack={() => navigateToDomainContext('admin_dash')} />}
-      {currentDomain === 'admin_approval' && <AdminApproval onNavigateBack={() => navigateToDomainContext('admin_dash')} />}
+      {currentDomain === 'admin_classes' && (
+        <AdminClassesDirectory onNavigateBack={() => navigateToDomainContext('admin_dash')} />
+      )}
       
-      {/* 👑 Passing userSession to enforce scope isolation on audit records */}
+      {/* Replace your current admin_approval line in App.js */}
+{currentDomain === 'admin_approval' && (
+  <div className="w-full min-h-screen flex flex-col">
+    <AdminApproval 
+      onNavigateBack={() => navigateToDomainContext('admin_dash')} 
+    />
+  </div>
+)}
+      
+      {/* 👑 ADMIN EXAM AUDIT CENTER ROUTE */}
       {currentDomain === 'admin_archive' && (
         <AdminExamAuditCenter 
           adminUser={userSession} 
           onNavigateBack={() => navigateToDomainContext('admin_dash')} 
+          onNavigateToMarking={({ assessmentId, adminUser: passingAdmin, isAdminViewer }) => {
+            const cleanId = sanitizeIncomingId(assessmentId);
+            setSelectedAssessmentId(cleanId);
+            localStorage.setItem('saved_asm_id_context', String(cleanId));
+            setIsAdminViewerMode(Boolean(isAdminViewer));
+            navigateToDomainContext('admin_grading');
+          }}
         />
       )}
 
-      {/* 👑 Passing userSession to enforce scope isolation on exam scheduler */}
+      {/* 👑 ADMIN MARK ESSAYS ROUTE VIEW */}
+      {currentDomain === 'admin_grading' && (
+        <MarkEssays 
+          assessmentId={selectedAssessmentId} 
+          adminUser={userSession}
+          isAdminViewer={isAdminViewerMode || true}
+          onNavigateBack={() => navigateToDomainContext('admin_archive')} 
+        />
+      )}
+
+      {/* 👑 PASSING USERSESSION TO ENFORCE SCOPE ISOLATION ON EXAM SCHEDULER */}
       {currentDomain === 'admin_scheduler' && (
         <ExamScheduler 
           adminUser={userSession} 
@@ -234,18 +263,25 @@ export default function App() {
           onFolderContextChange={handleFolderContextCacheUpdate}
           onNavigateToBuilder={(id) => { const c = sanitizeIncomingId(id); setSelectedAssessmentId(c); localStorage.setItem('saved_asm_id_context', String(c)); navigateToDomainContext('teacher_builder'); }}
           onNavigateToMonitor={(id) => { const c = sanitizeIncomingId(id); setSelectedAssessmentId(c); localStorage.setItem('saved_asm_id_context', String(c)); navigateToDomainContext('teacher_monitor'); }}
-          onNavigateToGrading={(id) => { const c = sanitizeIncomingId(id); setSelectedAssessmentId(c); localStorage.setItem('saved_asm_id_context', String(c)); navigateToDomainContext('teacher_grading'); }}
+          onNavigateToGrading={(id) => { const c = sanitizeIncomingId(id); setSelectedAssessmentId(c); localStorage.setItem('saved_asm_id_context', String(c)); setIsAdminViewerMode(false); navigateToDomainContext('teacher_grading'); }}
           onNavigateToGradebook={(f) => { handleFolderContextCacheUpdate(f); navigateToDomainContext('teacher_gradebook_matrix'); }}
           onNavigateToReview={() => alert("Retrieving Student Scripts...")}
           onLogOut={handleSessionTermination}
         />
       )}
 
-      {currentDomain === 'teacher_grading' && <MarkEssays assessmentId={selectedAssessmentId} onNavigateBack={() => navigateToDomainContext('teacher_dash')} />}
+      {currentDomain === 'teacher_grading' && (
+        <MarkEssays 
+          assessmentId={selectedAssessmentId} 
+          isAdminViewer={false}
+          onNavigateBack={() => navigateToDomainContext('teacher_dash')} 
+        />
+      )}
+      
       {currentDomain === 'teacher_gradebook_matrix' && <GradebookMatrix activeFolderContext={teacherFolderContext} onNavigateBack={() => navigateToDomainContext('teacher_dash')} />}
       {currentDomain === 'teacher_builder' && <QuestionBuilder assessmentId={selectedAssessmentId} onNavigateBack={() => navigateToDomainContext('teacher_dash')} />}
       {currentDomain === 'teacher_monitor' && <LiveMonitor assessmentId={selectedAssessmentId} onNavigateBack={() => navigateToDomainContext('teacher_dash')} />}
 
     </div>
   );
-} 
+}

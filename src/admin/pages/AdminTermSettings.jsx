@@ -1,5 +1,4 @@
-// src/admin/pages/AdminTermSettings.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { apiRequest } from '../../core/api'; 
 import { Calendar, Loader2, ShieldCheck, CheckCircle2, History, Power, Tag } from 'lucide-react';
 
@@ -7,8 +6,36 @@ export default function AdminTermSettings() {
     const [session, setSession] = useState('2025/2026');
     const [term, setTerm] = useState('Second Term');
     const [isActive, setIsActive] = useState(true); 
+    const [fetching, setFetching] = useState(true);
     const [loading, setLoading] = useState(false);
     const [successMessage, setSuccessMessage] = useState('');
+
+    useEffect(() => {
+        const fetchActiveSettings = async () => {
+            try {
+                const res = await apiRequest('api/v1/settings/active-term', { method: 'GET' });
+                const data = await res.json();
+
+                if (res.ok && data) {
+                    const settings = data.data || data.settings || data;
+                    
+                    const resolvedSession = settings.session || settings.active_session;
+                    const resolvedTerm = settings.term || settings.active_term;
+                    const resolvedIsActive = settings.is_active !== undefined ? settings.is_active : settings.active;
+
+                    if (resolvedSession) setSession(resolvedSession);
+                    if (resolvedTerm) setTerm(resolvedTerm);
+                    if (resolvedIsActive !== undefined) setIsActive(Boolean(resolvedIsActive));
+                }
+            } catch (err) {
+                console.error("Failed to fetch active term settings:", err);
+            } finally {
+                setFetching(false);
+            }
+        };
+
+        fetchActiveSettings();
+    }, []);
 
     const handleSave = async (e) => {
         e.preventDefault();
@@ -27,7 +54,7 @@ export default function AdminTermSettings() {
 
             const data = await res.json();
 
-            if (res.ok && data.status === 'SUCCESS') {
+            if (res.ok && (data.status === 'SUCCESS' || data.success)) {
                 setSuccessMessage('Academic term settings updated successfully! Refreshing app...');
                 setTimeout(() => {
                     window.location.reload();
@@ -43,10 +70,18 @@ export default function AdminTermSettings() {
         }
     };
 
+    if (fetching) {
+        return (
+            <div className="w-full max-w-3xl mx-auto bg-white border border-[#E2D5F8] rounded-3xl p-12 shadow-xs flex items-center justify-center font-mono text-xs text-[#7C6B93] uppercase font-black tracking-wider">
+                <Loader2 className="w-5 h-5 animate-spin text-[#7C3AED] mr-2" /> Loading active term settings...
+            </div>
+        );
+    }
+
     return (
         <div className="w-full max-w-3xl mx-auto bg-white border border-[#E2D5F8] rounded-3xl p-6 shadow-xs font-sans text-left space-y-6">
             
-            {/* Header Section (Matches Dashboard & Portal Headers) */}
+            {/* Header Section */}
             <div className="flex items-center gap-3 border-b border-[#E2D5F8]/60 pb-4">
                 <div className="w-10 h-10 bg-[#7C3AED] text-white rounded-2xl flex items-center justify-center shrink-0 shadow-2xs">
                     <Calendar className="w-5 h-5" />
@@ -85,7 +120,7 @@ export default function AdminTermSettings() {
                     </div>
                 </div>
 
-                {/* Academic Term Selector (Uniform Pill Style) */}
+                {/* Academic Term Selector */}
                 <div className="space-y-1">
                     <label className="block font-black text-[#7C6B93] uppercase tracking-wider text-[10px]">Active Academic Term</label>
                     <div className="grid grid-cols-3 gap-2.5">
@@ -106,7 +141,7 @@ export default function AdminTermSettings() {
                     </div>
                 </div>
 
-                {/* Network Status Toggle Card (Dynamically updates label based on state) */}
+                {/* Network Status Toggle Card */}
                 <div 
                     onClick={() => setIsActive(!isActive)}
                     className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between shadow-2xs ${

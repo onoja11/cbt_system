@@ -1,54 +1,95 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Folder, ArrowLeft, ChevronRight, LogOut, ShieldAlert, 
-  Loader2, FileSpreadsheet, Plus, Clock, Activity, CheckSquare, Play, Layers, FileText, ChevronDown, AlertTriangle, Users, Check, X, Search, ShieldCheck, CalendarDays, UserCheck 
+  Loader2, FileSpreadsheet, Plus, Clock, Activity, CheckSquare, Play, Layers, FileText, ChevronDown, AlertTriangle, Users, Check, X, Search, CalendarDays, UserCheck 
 } from 'lucide-react';
 import ConfirmationModal from '../../shared/ConfirmationModal';
 import { apiRequest } from '../../core/api';
 import Logo from '../../shared/Logo';
 
+// -----------------------------------------------------------------------------
+// 🧠 FRONTEND IN-MEMORY CACHE STORES
+// -----------------------------------------------------------------------------
+const frontendCache = {
+  folders: null, // { timestamp, data }
+  assessments: new Map(), // key: "classArmId_subjectId" => { timestamp, data }
+  roster: new Map(), // key: assessmentId => { timestamp, data }
+  TTL_MS: 300000, // 5 minutes default TTL for static views
+
+  clearAssessments(classArmId, subjectId) {
+    if (classArmId && subjectId) {
+      this.assessments.delete(`${classArmId}_${subjectId}`);
+    } else {
+      this.assessments.clear();
+    }
+  },
+
+  clearRoster(assessmentId) {
+    if (assessmentId) {
+      this.roster.delete(assessmentId);
+    } else {
+      this.roster.clear();
+    }
+  }
+};
+
 // 🎓 EMBEDDED STUDENT ROSTER & ALLOWLIST MANAGER COMPONENT
-function StudentRosterModal({ assessmentId, isOpen, onClose, onRosterSaved }) {
+const StudentRosterModal = React.memo(function StudentRosterModal({ assessmentId, isOpen, onClose, onRosterSaved }) {
   const [roster, setRoster] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
-    if (isOpen && assessmentId) {
-      fetchRoster();
-    }
-  }, [isOpen, assessmentId]);
+  const fetchRoster = useCallback(async (forceRefresh = false) => {
+    if (!assessmentId) return;
 
-  const fetchRoster = async () => {
+    // Check frontend cache first
+    const cachedRoster = frontendCache.roster.get(assessmentId);
+    const isCacheValid = cachedRoster && (Date.now() - cachedRoster.timestamp < frontendCache.TTL_MS);
+
+    if (!forceRefresh && isCacheValid) {
+      setRoster(cachedRoster.data);
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     try {
       const res = await apiRequest(`api/v1/teacher/assessments/${assessmentId}/roster`, { method: 'GET' });
       const data = await res.json();
       if (res.ok && data.status === 'SUCCESS') {
-        setRoster(data.roster || []);
+        const rosterData = data.roster || [];
+        setRoster(rosterData);
+        frontendCache.roster.set(assessmentId, { timestamp: Date.now(), data: rosterData });
       }
     } catch (err) {
       console.error("Failed to load student roster:", err);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [assessmentId]);
 
-  const handleToggleStudent = (studentProfileId) => {
+  useEffect(() => {
+    if (isOpen && assessmentId) {
+      fetchRoster();
+    }
+  }, [isOpen, assessmentId, fetchRoster]);
+
+  const handleToggleStudent = useCallback((studentProfileId) => {
     setRoster(prev => prev.map(student => {
       if (student.student_profile_id === studentProfileId) {
         return { ...student, is_allowed: !student.is_allowed };
       }
       return student;
     }));
-  };
+  }, []);
 
-  const handleSelectAll = (status) => {
+  const handleSelectAll = useCallback((status) => {
     setRoster(prev => prev.map(student => ({ ...student, is_allowed: status })));
-  };
+  }, []);
 
   const handleSaveRosterAndLaunch = async () => {
+    if (isSaving) return;
     setIsSaving(true);
     try {
       const allowedIds = roster.filter(s => s.is_allowed).map(s => s.student_profile_id);
@@ -60,36 +101,50 @@ function StudentRosterModal({ assessmentId, isOpen, onClose, onRosterSaved }) {
 
       const data = await res.json();
       if (res.ok && data.status === 'SUCCESS') {
+        // Invalidate roster cache on successful mutation
+        frontendCache.clearRoster(assessmentId);
+
         const launchRes = await apiRequest(`api/v1/teacher/assessments/${assessmentId}/status`, { 
           method: 'PATCH',
           body: JSON.stringify({ status: 'Exam in Progress' })
         });
         
-        if (launchRes.ok) {
-          onRosterSaved("Roster saved & exam session is now live!");
+        const launchData = await launchRes.json();
+
+        if (launchRes.ok && launchData.status === 'SUCCESS') {
+          onRosterSaved({ success: true, message: "Roster saved & exam session is now live!" });
           onClose();
         } else {
-          alert("Roster saved, but failed to initiate live start sequence.");
+          const errorMsg = launchData.message || "Failed to initiate live start sequence.";
+          onRosterSaved({ success: false, message: errorMsg });
+          onClose();
         }
       } else {
-        alert(data.message || "Failed to update student roster.");
+        const errorMsg = data.message || "Failed to update student roster.";
+        onRosterSaved({ success: false, message: errorMsg });
+        onClose();
       }
     } catch (err) {
       console.error("Failed to save roster and launch:", err);
-      alert("Network communication error during live launch sequence.");
+      onRosterSaved({ success: false, message: "Network communication error during live launch sequence." });
+      onClose();
     } finally {
       setIsSaving(false);
     }
   };
 
+  const filteredStudents = useMemo(() => {
+    const query = searchQuery.toLowerCase().trim();
+    if (!query) return roster;
+    return roster.filter(s => 
+      s.student_name.toLowerCase().includes(query) ||
+      (s.admission_no && s.admission_no.toLowerCase().includes(query))
+    );
+  }, [roster, searchQuery]);
+
+  const allowedCount = useMemo(() => roster.filter(s => s.is_allowed).length, [roster]);
+
   if (!isOpen) return null;
-
-  const filteredStudents = roster.filter(s => 
-    s.student_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (s.admission_no && s.admission_no.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
-
-  const allowedCount = roster.filter(s => s.is_allowed).length;
 
   return (
     <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-[30000] flex items-center justify-center p-4">
@@ -107,7 +162,7 @@ function StudentRosterModal({ assessmentId, isOpen, onClose, onRosterSaved }) {
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="w-8 h-8 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center cursor-pointer transition-all">
+          <button onClick={onClose} disabled={isSaving} className="w-8 h-8 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center cursor-pointer transition-all disabled:opacity-50">
             <X className="w-4 h-4 text-white" />
           </button>
         </div>
@@ -164,17 +219,17 @@ function StudentRosterModal({ assessmentId, isOpen, onClose, onRosterSaved }) {
         </div>
 
         <div className="p-4 sm:p-5 border-t border-[#E2D5F8]/60 bg-[#F7F5FC] flex justify-end gap-3 font-mono shrink-0">
-          <button onClick={onClose} className="px-5 py-2.5 bg-white border border-[#E2D5F8] rounded-xl text-xs font-bold uppercase text-slate-600 hover:bg-slate-50 cursor-pointer shadow-2xs">Cancel</button>
+          <button onClick={onClose} disabled={isSaving} className="px-5 py-2.5 bg-white border border-[#E2D5F8] rounded-xl text-xs font-bold uppercase text-slate-600 hover:bg-slate-50 cursor-pointer shadow-2xs disabled:opacity-50">Cancel</button>
           <button disabled={isSaving} onClick={handleSaveRosterAndLaunch} className="px-6 py-2.5 bg-[#22C55E] hover:bg-[#16A34A] text-white text-xs font-black uppercase tracking-wider rounded-xl flex items-center gap-2 cursor-pointer shadow-md transition-all active:scale-[0.97] disabled:opacity-50">
-            {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
-            <Play className="w-4 h-4 fill-current" /> Save Roster & Launch Live Exam
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin shrink-0" /> : <Play className="w-4 h-4 fill-current shrink-0" />} 
+            {isSaving ? 'Launching...' : 'Save Roster & Launch Live Exam'}
           </button>
         </div>
 
       </div>
     </div>
   );
-}
+});
 
 // 🏫 TEACHER DASHBOARD COMPONENT
 export default function TeacherDashboard({ 
@@ -189,6 +244,7 @@ export default function TeacherDashboard({
   onLogOut 
 }) {
   const [showLogoutDrawer, setShowLogoutDrawer] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [activeCourseFolder, setActiveCourseFolder] = useState(initialFolderContext || null);
   
   const [assignedCourses, setAssignedCourses] = useState([]);
@@ -207,25 +263,44 @@ export default function TeacherDashboard({
 
   const [rosterModalAssessmentId, setRosterModalAssessmentId] = useState(null);
 
-  const baseAvailableSlots = [
+  const baseAvailableSlots = useMemo(() => [
     { value: 'CA 1', label: 'CONTINUOUS ASSESSMENT 1 (CA 1)' },
     { value: 'Exam', label: 'TERMINAL EXAMINATION PAPER' }
-  ];
+  ], []);
 
-  const triggerBannerAlert = (message, type = 'error') => {
+  const folderCardStyles = useMemo(() => [
+    { bg: 'bg-[#F3EEFC]', border: 'border-[#E2D5F8]', iconColor: 'text-[#7C3AED]' },
+    { bg: 'bg-[#FCE7EE]', border: 'border-[#F8D3DF]', iconColor: 'text-[#E11D48]' },
+    { bg: 'bg-[#EBFBF3]', border: 'border-[#C6F6D5]', iconColor: 'text-[#059669]' },
+    { bg: 'bg-[#FFFBEB]', border: 'border-[#FEF3C7]', iconColor: 'text-[#D97706]' }
+  ], []);
+
+  const triggerBannerAlert = useCallback((message, type = 'error') => {
     setNotification({ isVisible: true, type, message });
     setTimeout(() => {
       setNotification({ isVisible: false, type: 'error', message: '' });
     }, 5000);
-  };
+  }, []);
 
+  // Fetch allocated folders on mount (with Frontend Caching)
   useEffect(() => {
+    let isMounted = true;
+
     const fetchAllocatedFolders = async () => {
+      // Return cached folders if valid
+      if (frontendCache.folders && (Date.now() - frontendCache.folders.timestamp < frontendCache.TTL_MS)) {
+        if (isMounted) {
+          setAssignedCourses(frontendCache.folders.data);
+          setIsLoadingFolders(false);
+        }
+        return;
+      }
+
       try {
         const response = await apiRequest('api/v1/teacher/folders', { method: 'GET' });
         const data = await response.json();
 
-        if (response.ok && data.status === 'SUCCESS') {
+        if (isMounted && response.ok && data.status === 'SUCCESS') {
           const formattedCourses = data.folders.map(folder => ({
             id: folder.class_arm_id, 
             assignmentId: folder.assignment_id,
@@ -234,72 +309,85 @@ export default function TeacherDashboard({
             classGroup: folder.class_arm_name,
             code: folder.subject_name.substring(0, 3) + ' ' + (300 + folder.assignment_id)
           }));
+
+          frontendCache.folders = { timestamp: Date.now(), data: formattedCourses };
           setAssignedCourses(formattedCourses);
         }
       } catch (error) {
         console.error("❌ [TEACHER ALLOCATION INGESTION FAULT]:", error);
       } finally {
-        setIsLoadingFolders(false);
+        if (isMounted) setIsLoadingFolders(false);
       }
     };
 
     fetchAllocatedFolders();
+    return () => { isMounted = false; };
   }, []);
 
-  useEffect(() => {
-    const synchronizeActiveFolderContent = async () => {
-      if (activeCourseFolder && assessmentsRegistry.length === 0) {
-        setIsLoadingSlots(true);
-        try {
-          const response = await apiRequest(`api/v1/teacher/folders/${activeCourseFolder.id}/assessments?subject_id=${activeCourseFolder.subjectId}`, { method: 'GET' });
-          const data = await response.json();
+  // Load Folder Assessments (with Cache-First Strategy & Invalidation Support)
+  const loadFolderAssessments = useCallback(async (folder, forceRefresh = false) => {
+    if (!folder || !folder.id || !folder.subjectId) return;
 
-          if (response.ok && data.status === 'SUCCESS') {
-            setAssessmentsRegistry(data.assessments);
-          }
-        } catch (error) {
-          console.error(error);
-        } finally {
-          setIsLoadingSlots(false);
+    const cacheKey = `${folder.id}_${folder.subjectId}`;
+    const cachedData = frontendCache.assessments.get(cacheKey);
+    const isCacheValid = cachedData && (Date.now() - cachedData.timestamp < frontendCache.TTL_MS);
+
+    if (!forceRefresh && isCacheValid) {
+      setAssessmentsRegistry(cachedData.data);
+      const createdTypes = cachedData.data.map(a => a.type);
+      const firstAvailable = baseAvailableSlots.find(slot => !createdTypes.includes(slot.value));
+      if (firstAvailable) setAssessmentType(firstAvailable.value);
+      setIsLoadingSlots(false);
+      return;
+    }
+
+    setIsLoadingSlots(true);
+    try {
+      const response = await apiRequest(`api/v1/teacher/folders/${folder.id}/assessments?subject_id=${folder.subjectId}`, { method: 'GET' });
+      const data = await response.json();
+
+      if (response.ok && data.status === 'SUCCESS') {
+        const assessmentsList = data.assessments || [];
+        setAssessmentsRegistry(assessmentsList);
+
+        // Store in frontend state cache
+        frontendCache.assessments.set(cacheKey, { timestamp: Date.now(), data: assessmentsList });
+        
+        const createdTypes = assessmentsList.map(a => a.type);
+        const firstAvailable = baseAvailableSlots.find(slot => !createdTypes.includes(slot.value));
+        if (firstAvailable) {
+          setAssessmentType(firstAvailable.value);
         }
+      } else {
+        setAssessmentsRegistry([]);
       }
-    };
+    } catch (error) {
+      console.error(error);
+      setAssessmentsRegistry([]);
+    } finally {
+      setIsLoadingSlots(false);
+    }
+  }, [baseAvailableSlots]);
 
-    synchronizeActiveFolderContent();
-  }, [activeCourseFolder, assessmentsRegistry.length]);
+  // Synchronize folder context
+  useEffect(() => {
+    if (activeCourseFolder) {
+      loadFolderAssessments(activeCourseFolder);
+    }
+  }, [activeCourseFolder, loadFolderAssessments]);
 
-  const handleSetFolderContext = async (folder) => {
+  const handleSetFolderContext = useCallback((folder) => {
     setActiveCourseFolder(folder);
     onFolderContextChange(folder);
-
-    if (folder) {
-      setIsLoadingSlots(true);
-      try {
-        const response = await apiRequest(`api/v1/teacher/folders/${folder.id}/assessments?subject_id=${folder.subjectId}`, { method: 'GET' });
-        const data = await response.json();
-
-        if (response.ok && data.status === 'SUCCESS') {
-          setAssessmentsRegistry(data.assessments);
-          
-          const createdTypes = data.assessments.map(a => a.type);
-          const firstAvailable = baseAvailableSlots.find(slot => !createdTypes.includes(slot.value));
-          if (firstAvailable) {
-            setAssessmentType(firstAvailable.value);
-          }
-        } else {
-          setAssessmentsRegistry([]);
-        }
-      } catch (error) {
-        console.error(error);
-        setAssessmentsRegistry([]);
-      } finally {
-        setIsLoadingSlots(false);
-      }
+    if (!folder) {
+      setAssessmentsRegistry([]);
     }
-  };
+  }, [onFolderContextChange]);
 
   const handleOpenInitModal = (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
+    if (!activeCourseFolder) return;
+
     const slotAlreadyExists = assessmentsRegistry.some(asm => asm.type === assessmentType && asm.courseId === activeCourseFolder.id);
     if (slotAlreadyExists) {
       triggerBannerAlert(`A folder setup link for [${assessmentType}] already exists for this class.`, 'warning');
@@ -331,6 +419,9 @@ export default function TeacherDashboard({
       const data = await response.json();
 
       if (response.ok && data.status === 'SUCCESS') {
+        // Clear frontend assessments cache for this folder so fresh data will be retrieved
+        frontendCache.clearAssessments(activeCourseFolder.id, activeCourseFolder.subjectId);
+
         const updatedList = [...assessmentsRegistry, data.assessment];
         setAssessmentsRegistry(updatedList);
         triggerBannerAlert(`Assessment envelope [${assessmentType}] initialized successfully.`, 'success');
@@ -352,6 +443,7 @@ export default function TeacherDashboard({
   };
 
   const handleModalConfirm = async () => {
+    if (isProcessing) return;
     setIsProcessing(true);
     try {
       if (modalConfig.type === 'create_slot') {
@@ -365,6 +457,8 @@ export default function TeacherDashboard({
         const data = await response.json();
 
         if (response.ok && data.status === 'SUCCESS') {
+          // Clear cache on status transition
+          frontendCache.clearAssessments(activeCourseFolder?.id, activeCourseFolder?.subjectId);
           setAssessmentsRegistry(prev => prev.map(asm => asm.id === modalConfig.targetId ? { ...asm, status: 'Pending Admin' } : asm));
           triggerBannerAlert("Question sheet locked and dispatched to admin queue.", "success");
         } else {
@@ -380,10 +474,35 @@ export default function TeacherDashboard({
     }
   };
 
-  const openFolderSlots = assessmentsRegistry.filter(asm => asm.courseId === activeCourseFolder?.id);
-  const allSlotsTaken = baseAvailableSlots.every(slot => assessmentsRegistry.some(asm => asm.type === slot.value && asm.courseId === activeCourseFolder?.id));
+  const handleConfirmLogout = async () => {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    try {
+      if (onLogOut) await onLogOut();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoggingOut(false);
+      setShowLogoutDrawer(false);
+    }
+  };
 
-  const formatDisplayDuration = (rawMinutes) => {
+  const openFolderSlots = useMemo(() => 
+    assessmentsRegistry.filter(asm => asm.courseId === activeCourseFolder?.id),
+    [assessmentsRegistry, activeCourseFolder]
+  );
+
+  const allSlotsTaken = useMemo(() => 
+    baseAvailableSlots.every(slot => assessmentsRegistry.some(asm => asm.type === slot.value && asm.courseId === activeCourseFolder?.id)),
+    [baseAvailableSlots, assessmentsRegistry, activeCourseFolder]
+  );
+
+  const isClassCurrentlyRunningAssessment = useMemo(() => 
+    openFolderSlots.some(asm => asm.status === 'Exam in Progress'),
+    [openFolderSlots]
+  );
+
+  const formatDisplayDuration = useCallback((rawMinutes) => {
     const mins = parseInt(rawMinutes, 10) || 30;
     if (mins >= 60) {
       const h = Math.floor(mins / 60);
@@ -391,14 +510,16 @@ export default function TeacherDashboard({
       return m > 0 ? `${h}h ${m}m` : `${h} Hour${h > 1 ? 's' : ''}`;
     }
     return `${mins} Mins`;
-  };
+  }, []);
 
-  const folderCardStyles = [
-    { bg: 'bg-[#F3EEFC]', border: 'border-[#E2D5F8]', iconColor: 'text-[#7C3AED]' },
-    { bg: 'bg-[#FCE7EE]', border: 'border-[#F8D3DF]', iconColor: 'text-[#E11D48]' },
-    { bg: 'bg-[#EBFBF3]', border: 'border-[#C6F6D5]', iconColor: 'text-[#059669]' },
-    { bg: 'bg-[#FFFBEB]', border: 'border-[#FEF3C7]', iconColor: 'text-[#D97706]' }
-  ];
+  const dynamicConfirmLabel = isProcessing ? (
+    <span className="flex items-center gap-2">
+      <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+      <span>Processing...</span>
+    </span>
+  ) : (
+    modalConfig.type === 'create_slot' ? "Create Assessment" : "Submit for Approval"
+  );
 
   return (
     <div className="min-h-screen bg-[#F7F5FC] flex flex-col justify-between select-none relative text-[#2A1A63] font-sans w-full overflow-x-hidden">
@@ -419,7 +540,7 @@ export default function TeacherDashboard({
           </div>
           <div className="text-left">
             <h2 className="text-xs font-black uppercase tracking-wider text-white">START-RITE WORKSPACE</h2>
-            <p className="text-[11px] font-bold text-white uppercase tracking-wider mt-0.5">Teacher: {teacher?.name || "OCHIGBO GODSWILL"}</p>
+            <p className="text-[11px] font-bold text-white uppercase tracking-wider mt-0.5">Teacher: {teacher?.name || "STAFF MEMBER"}</p>
           </div>
         </div>
 
@@ -506,7 +627,7 @@ export default function TeacherDashboard({
       ) : (
         <main className="flex-1 w-full max-w-7xl mx-auto px-6 sm:px-8 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8 my-auto items-start">
           
-          {/* LEFT COLUMN: CREATE TEST FORM (Span 4) */}
+          {/* LEFT COLUMN: CREATE TEST FORM */}
           <section className="lg:col-span-4 bg-white border border-[#E2D5F8] rounded-3xl p-6 shadow-sm flex flex-col justify-between text-left">
             <form onSubmit={handleOpenInitModal} className="space-y-5">
               <div className="flex items-center gap-2.5 border-b border-[#E2D5F8]/60 pb-3">
@@ -585,7 +706,7 @@ export default function TeacherDashboard({
             </button>
           </section>
 
-          {/* RIGHT COLUMN: ASSESSMENT INDEX MATRIX (Span 8) */}
+          {/* RIGHT COLUMN: ASSESSMENT INDEX MATRIX */}
           <section className="lg:col-span-8 bg-white border border-[#E2D5F8] rounded-3xl p-6 shadow-sm flex flex-col justify-between text-left">
             <div className="w-full h-full flex flex-col">
               
@@ -635,7 +756,6 @@ export default function TeacherDashboard({
                     return (
                       <div key={asm.id || idx} className="p-5 bg-[#FAF9FA] border border-[#E2D5F8] rounded-2xl flex flex-col gap-4 hover:border-[#7C3AED] transition-all shadow-2xs">
                         
-                        {/* Top Row: Type & Status */}
                         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-[#E2D5F8]/50 pb-3">
                           <div className="flex items-center gap-2.5 flex-wrap">
                             <span className="text-[10px] font-mono font-black border border-[#7C3AED]/30 px-3 py-1 rounded-xl bg-purple-50 text-[#7C3AED] uppercase tracking-wider">{asm.type}</span>
@@ -655,10 +775,12 @@ export default function TeacherDashboard({
                           </span>
                         </div>
 
-                        {/* Meta Info Row */}
                         <div className="space-y-1.5 text-xs text-[#7C6B93] font-mono">
-                          <p className="font-bold uppercase tracking-wide text-slate-700">
-                            {activeCourseFolder.classGroup} • <span className="text-slate-900 font-black">{asm.totalQuestions || 0} Stored Questions</span> • Timer: <span className="text-slate-900 bg-white px-2 py-0.5 rounded border border-[#E2D5F8]">{formatDisplayDuration(asm.duration)}</span>
+                          <p className="font-bold uppercase tracking-wide text-slate-700 flex items-center gap-2">
+                            <span>{activeCourseFolder.classGroup}</span> &bull; 
+                            <span className="text-slate-900 font-black">{asm.totalQuestions || 0} Stored Questions</span> &bull; 
+                            <span>Timer:</span> 
+                            <span className="text-slate-900 bg-white px-2 py-0.5 rounded border border-[#E2D5F8]">{formatDisplayDuration(asm.duration)}</span>
                           </p>
                           {hasAdminAccessTime && (
                             <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50/80 border border-indigo-200 text-indigo-900 rounded-xl text-[11px] font-black uppercase tracking-tight">
@@ -668,17 +790,31 @@ export default function TeacherDashboard({
                           )}
                         </div>
 
-                        {/* Actions Toolbar */}
                         <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-[#E2D5F8]/50 justify-end">
                           
                           {hasAdminAccessTime && asm.status !== 'Exam in Progress' && asm.status !== 'Finished (Ready to Grade)' && asm.status !== 'Graded' && (
                             isAccessTimeValid ? (
-                              <button 
-                                onClick={() => setRosterModalAssessmentId(asm.id)} 
-                                className="px-4 py-2 bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-[11px] font-black uppercase tracking-wider rounded-xl flex items-center gap-1.5 shadow-sm cursor-pointer active:scale-[0.97] transition-all font-mono"
-                              >
-                                <Play className="w-3.5 h-3.5 fill-current" /> Start Exam (Select Roster)
-                              </button>
+                              isClassCurrentlyRunningAssessment ? (
+                                <div className="flex items-center gap-2">
+                                  <span className="px-3 py-1 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-mono font-black uppercase rounded-xl">
+                                    ⚠️ Another Exam Active in Class
+                                  </span>
+                                  <button 
+                                    disabled 
+                                    className="px-4 py-2 bg-slate-200 text-slate-400 text-[11px] font-black uppercase tracking-wider rounded-xl flex items-center gap-1.5 cursor-not-allowed font-mono border border-slate-300"
+                                    title="Another assessment is currently running for this class."
+                                  >
+                                    <Play className="w-3.5 h-3.5 fill-current" /> Start Exam
+                                  </button>
+                                </div>
+                              ) : (
+                                <button 
+                                  onClick={() => setRosterModalAssessmentId(asm.id)} 
+                                  className="px-4 py-2 bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-[11px] font-black uppercase tracking-wider rounded-xl flex items-center gap-1.5 shadow-sm cursor-pointer active:scale-[0.97] transition-all font-mono"
+                                >
+                                  <Play className="w-3.5 h-3.5 fill-current" /> Start Exam (Select Roster)
+                                </button>
+                              )
                             ) : (
                               <button 
                                 disabled 
@@ -709,7 +845,6 @@ export default function TeacherDashboard({
                             </button>
                           )}
 
-                          {/* 🌟 NEW: VIEW EXAM LOGS BUTTON (Accessible when exam is active or concluded) */}
                           {(asm.status === 'Exam in Progress' || asm.status === 'Finished (Ready to Grade)' || asm.status === 'Graded') && (
                             <button 
                               onClick={() => onNavigateToMonitor(asm.id)} 
@@ -764,16 +899,24 @@ export default function TeacherDashboard({
         assessmentId={rosterModalAssessmentId}
         isOpen={!!rosterModalAssessmentId}
         onClose={() => setRosterModalAssessmentId(null)}
-        onRosterSaved={(msg) => {
-          triggerBannerAlert(msg || "Roster saved successfully!", "success");
+        onRosterSaved={(result) => {
+          if (result && result.success) {
+            triggerBannerAlert(result.message || "Roster saved successfully!", "success");
+          } else if (result) {
+            triggerBannerAlert(result.message || "Failed to launch exam.", "error");
+          }
           if (activeCourseFolder) {
-            handleSetFolderContext(activeCourseFolder);
+            // Force refresh of folder assessments when exam goes live
+            loadFolderAssessments(activeCourseFolder, true);
           }
         }}
       />
 
       <ConfirmationModal 
         isOpen={modalConfig.isOpen}
+        isConfirming={isProcessing}
+        isLoading={isProcessing}
+        loading={isProcessing}
         title={
           modalConfig.type === 'create_slot' ? "Create Assessment File" : 
           "Lock & Submit Paper for Moderation"
@@ -782,16 +925,17 @@ export default function TeacherDashboard({
           modalConfig.type === 'create_slot' ? `Confirm creation of a new, blank ${assessmentType} testing folder for this subject?` : 
           "Are you sure you want to finish drafting this paper and submit it for administrative review? This will lock modification features until approved."
         }
-        confirmLabel={modalConfig.type === 'create_slot' ? "Create Assessment" : "Submit for Approval"} 
+        confirmLabel={dynamicConfirmLabel} 
         cancelLabel="Cancel Action"
         onConfirm={handleModalConfirm}
-        onCancel={() => setModalConfig({ isOpen: false, type: null, targetId: null })}
+        onCancel={() => !isProcessing && setModalConfig({ isOpen: false, type: null, targetId: null })}
         summaryData={
           modalConfig.type === 'create_slot' ? { "Class Group Folder": activeCourseFolder?.classGroup, "Assessment Slot": assessmentType } : 
           { "Forward Destination": "Administrative Review Desk Queue", "Editing Constraints": "Restricts Question Editor Canvas Changes" }
         }
       />
 
+      {/* LOGOUT CONFIRMATION DRAWER */}
       <div className={`fixed inset-0 bg-slate-950/40 backdrop-blur-xs z-[10000] transition-all duration-300 flex flex-col justify-end w-full ${showLogoutDrawer ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
         <div className={`w-full bg-white border-t-2 border-[#C62927] p-4 md:p-6 shadow-2xl transition-all duration-300 transform font-mono ${showLogoutDrawer ? 'translate-y-0' : 'translate-y-full'}`}>
           <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 w-full select-none text-left">
@@ -805,8 +949,11 @@ export default function TeacherDashboard({
               </div>
             </div>
             <div className="flex gap-2 w-full sm:w-auto font-sans border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 justify-end">
-              <button onClick={() => setShowLogoutDrawer(false)} className="px-4 py-2 border border-[#9A87A9]/30 text-slate-600 hover:bg-[#FAF9FA] text-xs font-bold uppercase rounded-lg cursor-pointer transition-all text-center">Cancel Actions</button>
-              <button onClick={onLogOut} className="px-5 py-2.5 bg-[#2A1A63] text-white text-xs font-bold uppercase rounded-lg shadow-md cursor-pointer font-mono text-center">Confirm Logout</button>
+              <button disabled={isLoggingOut} onClick={() => setShowLogoutDrawer(false)} className="px-4 py-2 border border-[#9A87A9]/30 text-slate-600 hover:bg-[#FAF9FA] text-xs font-bold uppercase rounded-lg cursor-pointer transition-all text-center disabled:opacity-50">Cancel Actions</button>
+              <button disabled={isLoggingOut} onClick={handleConfirmLogout} className="px-5 py-2.5 bg-[#2A1A63] text-white text-xs font-bold uppercase rounded-lg shadow-md cursor-pointer font-mono text-center flex items-center gap-2 justify-center disabled:opacity-50">
+                {isLoggingOut && <Loader2 className="w-4 h-4 animate-spin shrink-0" />}
+                {isLoggingOut ? 'Signing out...' : 'Confirm Logout'}
+              </button>
             </div>
           </div>
         </div>

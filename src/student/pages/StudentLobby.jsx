@@ -1,5 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { ShieldAlert, BookOpen, Clock, Loader2, Lock, AlertTriangle, MonitorCheck, LogOut, Award, CheckCircle, XCircle, ChevronRight, X, Users, Compass } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  ShieldAlert, BookOpen, Clock, Loader2, LogOut, Award, 
+  CheckCircle, ChevronRight, X, Users, Compass, Info, FileText 
+} from 'lucide-react';
 import { apiRequest } from '../../core/api';
 import ConfirmationModal from '../../shared/ConfirmationModal';
 import SafeMathText from '../../shared/SafeMathText';
@@ -146,192 +149,307 @@ export default function StudentLobby({ student, onLaunchWorkspace, onLogoutSucce
     return `${totalMinutes} Minutes`;
   };
 
+  // Group specific section instructions by section type
+  const sectionInstructionsGrouped = useMemo(() => {
+    if (!activeExam?.section_instructions || !Array.isArray(activeExam.section_instructions)) {
+      return { objective: [], theory: [], other: [] };
+    }
+
+    const objective = [];
+    const theory = [];
+    const other = [];
+
+    activeExam.section_instructions.forEach((sec) => {
+      const title = (sec.title || sec.section_title || '').toLowerCase();
+      if (title.includes('obj') || title.includes('section a') || title.includes('multiple')) {
+        objective.push(sec);
+      } else if (title.includes('theory') || title.includes('section b') || title.includes('essay')) {
+        theory.push(sec);
+      } else {
+        other.push(sec);
+      }
+    });
+
+    return { objective, theory, other };
+  }, [activeExam]);
+
   if (lobbyState === 'INGESTING' || isLoggingOut) {
     return (
-      <div className="min-h-screen bg-[#F8F9FC] flex flex-col justify-center items-center font-mono text-xs uppercase text-slate-500 tracking-wider gap-3">
-        <Loader2 className="w-5 h-5 animate-spin text-[#7C3AED]" />
-        <span>{isLoggingOut ? "Securing and closing session..." : "Preparing your workspace..."}</span>
+      <div className="h-screen bg-[#F8F9FC] flex flex-col justify-center items-center font-mono text-xs uppercase text-slate-500 tracking-wider gap-3">
+        <Loader2 className="w-6 h-6 animate-spin text-[#7C3AED]" />
+        <span>{isLoggingOut ? "Securing session context..." : "Preparing exam lobby..."}</span>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#F8F9FC] flex flex-col justify-between select-none font-sans text-slate-800 w-full overflow-x-hidden">
+    <div className="h-screen max-h-screen bg-[#F8F9FC] flex flex-col justify-between select-none font-sans text-slate-800 w-full overflow-hidden">
       
-      {/* Header with Logo Integrated */}
-      <header className="w-full bg-gradient-to-r from-[#7C3AED] via-[#8B5CF6] to-[#A78BFA] px-4 sm:px-6 py-4 flex flex-col sm:flex-row justify-between items-center gap-3 shadow-xs sticky top-0 z-40 shrink-0">
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <div className="bg-white p-1.5 rounded-2xl shadow-xs flex items-center justify-center shrink-0">
-            <Logo size={32} showText={false} />
+      {/* HEADER BAR */}
+      <header className="w-full bg-gradient-to-r from-[#7C3AED] via-[#8B5CF6] to-[#A78BFA] px-5 py-2.5 flex flex-row justify-between items-center gap-3 shadow-xs shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="bg-white p-1 rounded-xl shadow-xs flex items-center justify-center shrink-0">
+            <Logo size={26} showText={false} />
           </div>
           <div className="min-w-0 text-left">
             <h2 className="text-xs font-black text-white leading-none uppercase truncate">{student?.name || 'Student Candidate'}</h2>
-            <p className="text-[11px] font-bold text-white uppercase tracking-wider mt-1 font-mono truncate">
+            <p className="text-[10px] font-bold text-white/90 uppercase tracking-wider mt-0.5 font-mono truncate">
               ID: {student?.id || 'VTS-2026'} &bull; {student?.details?.class_group || 'STARTRITE REPOSITORIES'}
             </p>
           </div>
         </div>
         
-        <div className="flex items-center gap-2.5 shrink-0 font-mono w-full sm:w-auto justify-end">
+        <div className="flex items-center gap-2 shrink-0 font-mono">
           <button 
             onClick={handleOpenResultsModal}
-            className="flex items-center gap-1.5 px-3.5 py-2 border border-white/30 text-white bg-white/10 hover:bg-white/20 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all shadow-2xs cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-white/30 text-white bg-white/10 hover:bg-white/20 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all shadow-2xs cursor-pointer"
           >
             <Award className="w-3.5 h-3.5 text-white" />
-            <span>Score Repository</span>
+            <span className="hidden sm:inline">Scores Repository</span>
           </button>
 
           <button 
             onClick={() => setIsLogoutModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 border border-white/30 text-white bg-white/10 hover:bg-white/20 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all shadow-2xs cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-white/30 text-white bg-white/10 hover:bg-white/20 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all shadow-2xs cursor-pointer"
           >
             <LogOut className="w-3.5 h-3.5" />
-            <span>Sign Out</span>
+            <span className="hidden sm:inline">Sign Out</span>
           </button>
         </div>
       </header>
 
-      <main className="flex-1 w-full max-w-3xl mx-auto px-4 sm:px-6 py-8 flex flex-col justify-center items-center my-auto">
+      {/* MAIN VIEWPORT CONTAINER */}
+      <main className="flex-1 w-full max-w-4xl mx-auto px-4 sm:px-6 py-2 flex flex-col justify-center items-center my-auto min-h-0">
         
-        {/* CASE 1: STRICT SUBMISSION LOCKOUT */}
+        {/* CASE 1: SUBMISSION LOCKOUT */}
         {lobbyState === 'SUBMITTED_LOCKOUT' && (
-          <div className="w-full bg-white border border-slate-200/80 rounded-3xl p-8 sm:p-10 shadow-sm text-center space-y-6">
-            <div className="w-14 h-14 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto shadow-2xs">
+          <div className="w-full bg-white border border-slate-200/80 rounded-3xl p-6 shadow-xs text-center space-y-4">
+            <div className="w-12 h-12 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto shadow-2xs">
               <CheckCircle className="w-6 h-6" />
             </div>
-            <div className="space-y-2">
-              <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide font-sans">Assessment Concluded</h3>
-              <p className="text-[10px] text-indigo-600 font-black font-mono uppercase tracking-wider">Script Successfully Lodged</p>
+            <div className="space-y-1">
+              <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide">Assessment Concluded</h3>
+              <p className="text-[10px] text-indigo-600 font-black font-mono uppercase tracking-wider">Answer Script Lodged</p>
               <p className="text-xs text-slate-600 font-medium leading-relaxed pt-1 max-w-sm mx-auto">
-                {serverMessage || "Your answer script has been securely saved to the school records. Re-entry is no longer permitted."}
+                {serverMessage || "Your script has been saved. Re-entry is restricted."}
               </p>
             </div>
-            <div className="pt-2 flex flex-col gap-2.5 max-w-xs mx-auto">
+            <div className="pt-2 max-w-xs mx-auto">
               <button 
                 onClick={handleOpenResultsModal}
-                className="w-full py-3 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-black text-[10px] uppercase tracking-wider rounded-xl cursor-pointer font-mono shadow-sm transition-all"
+                className="w-full py-2.5 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-black text-[10px] uppercase tracking-wider rounded-xl cursor-pointer font-mono shadow-sm transition-all"
               >
-                Review Objective Breakdown
+                Review Score Breakdown
               </button>
             </div>
           </div>
         )}
 
-        {/* CASE 2: IDLE TIMELINE NO PAPERS READY */}
+        {/* CASE 2: WAITING ROOM IDLE */}
         {lobbyState === 'NO_EXAM' && (
-          <div className="w-full bg-white border border-slate-200/80 rounded-3xl p-8 sm:p-10 shadow-sm text-center space-y-5">
-            <div className="w-14 h-14 bg-slate-50 border border-slate-200 text-slate-400 rounded-2xl flex items-center justify-center mx-auto shadow-2xs">
+          <div className="w-full bg-white border border-slate-200/80 rounded-3xl p-6 shadow-xs text-center space-y-4">
+            <div className="w-12 h-12 bg-slate-50 border border-slate-200 text-slate-400 rounded-2xl flex items-center justify-center mx-auto shadow-2xs">
               <Compass className="w-6 h-6 text-[#7C3AED]" />
             </div>
-            <div className="space-y-1.5">
-              <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider font-sans">Waiting Room Active</h3>
+            <div className="space-y-1">
+              <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider">Waiting Room Active</h3>
               <p className="text-xs text-slate-600 font-medium leading-relaxed max-w-sm mx-auto">
-                Your station is secure and connected. There are no active examination streams running right now. Please relax and await instructions from your teacher.
+                Your station is connected. There are no active examination streams running right now.
               </p>
             </div>
-            <div className="flex flex-col gap-2.5 pt-2 max-w-xs mx-auto">
-              <button onClick={checkExamEligibilityFeed} className="w-full py-3 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-black text-[10px] uppercase tracking-wider rounded-xl cursor-pointer font-mono shadow-sm transition-all">
-                Refresh Waiting Room Feed
+            <div className="flex flex-col gap-2 pt-1 max-w-xs mx-auto">
+              <button onClick={checkExamEligibilityFeed} className="w-full py-2.5 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-black text-[10px] uppercase tracking-wider rounded-xl cursor-pointer font-mono shadow-sm transition-all">
+                Refresh Feed
               </button>
-              <button onClick={handleOpenResultsModal} className="w-full py-3 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 font-black text-[10px] uppercase tracking-wider rounded-xl cursor-pointer font-mono shadow-2xs">
-                View Past Graded Records
+              <button onClick={handleOpenResultsModal} className="w-full py-2.5 bg-white border border-slate-200 text-slate-700 font-black text-[10px] uppercase tracking-wider rounded-xl cursor-pointer font-mono shadow-2xs">
+                View Graded History
               </button>
             </div>
           </div>
         )}
 
-        {/* CASE 3: AWAITING ROSTER CLEARANCE BY TEACHER */}
+        {/* CASE 3: ROSTER PENDING */}
         {lobbyState === 'ROSTER_PENDING' && (
-          <div className="w-full bg-white border border-slate-200/80 rounded-3xl p-8 sm:p-10 shadow-sm text-center space-y-5">
-            <div className="w-14 h-14 bg-amber-50 border border-amber-200 text-amber-600 rounded-2xl flex items-center justify-center mx-auto shadow-2xs">
+          <div className="w-full bg-white border border-slate-200/80 rounded-3xl p-6 shadow-xs text-center space-y-4">
+            <div className="w-12 h-12 bg-amber-50 border border-amber-200 text-amber-600 rounded-2xl flex items-center justify-center mx-auto shadow-2xs">
               <Users className="w-6 h-6" />
             </div>
-            <div className="space-y-2">
-              <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight font-sans">Awaiting Teacher Verification</h3>
-              <p className="text-[10px] text-amber-700 font-black font-mono uppercase tracking-wider">Exam Hall Session is Open</p>
+            <div className="space-y-1">
+              <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Awaiting Teacher Verification</h3>
               <p className="text-xs text-slate-600 font-medium leading-relaxed pt-1 max-w-sm mx-auto">
-                {serverMessage || "The test session has started, but your supervisor has not yet checked you in on the allowlist roster. Please notify your teacher."}
+                {serverMessage || "Please inform your supervisor to check you in on the exam roster."}
               </p>
             </div>
             <div className="pt-2 max-w-xs mx-auto w-full">
               <button 
                 onClick={checkExamEligibilityFeed}
-                className="w-full py-3 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-black text-[10px] uppercase tracking-wider rounded-xl cursor-pointer font-mono shadow-sm transition-all"
+                className="w-full py-2.5 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-black text-[10px] uppercase tracking-wider rounded-xl cursor-pointer font-mono shadow-sm transition-all"
               >
-                Check Verification Status Again
+                Re-check Verification
               </button>
             </div>
           </div>
         )}
 
-        {/* CASE 4: INSUFFICIENT HALL WINDOW HEADROOM */}
+        {/* CASE 4: WINDOW INSUFFICIENT */}
         {lobbyState === 'WINDOW_INSUFFICIENT' && (
-          <div className="w-full bg-white border border-slate-200/80 rounded-3xl p-8 sm:p-10 shadow-sm text-center space-y-5">
-            <div className="w-14 h-14 bg-slate-100 border border-slate-200 text-slate-500 rounded-2xl flex items-center justify-center mx-auto shadow-2xs">
+          <div className="w-full bg-white border border-slate-200/80 rounded-3xl p-6 shadow-xs text-center space-y-4">
+            <div className="w-12 h-12 bg-slate-100 border border-slate-200 text-slate-500 rounded-2xl flex items-center justify-center mx-auto shadow-2xs">
               <Clock className="w-6 h-6" />
             </div>
-            <div className="space-y-2">
-              <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight font-sans">Access Window Closed</h3>
-              <p className="text-[10px] text-slate-500 font-black font-mono uppercase tracking-wider">Late Entry Restricted</p>
+            <div className="space-y-1">
+              <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Access Window Closed</h3>
               <p className="text-xs text-slate-600 font-medium leading-relaxed pt-1 max-w-sm mx-auto">
-                {serverMessage || "The remaining time left in the examination window is shorter than the required test duration. Entry is no longer permitted."}
+                {serverMessage || "Late entry restricted as remaining window duration is insufficient."}
               </p>
             </div>
           </div>
         )}
 
-        {/* CASE 5: READY TO START TEST MODULE */}
+        {/* CASE 5: READY TO START (OPTIMIZED ZERO-SCROLL CARD) */}
         {lobbyState === 'READY' && activeExam && (
-          <div className="w-full bg-white border border-slate-200/80 rounded-3xl p-6 sm:p-8 shadow-sm space-y-6 text-left">
-            <div className="border-b border-slate-100 pb-4">
-              <span className="text-[9px] font-black font-mono uppercase tracking-wider text-emerald-700 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-200 inline-block">
-                Question Paper Cleared
-              </span>
-              <h3 className="text-base font-black text-slate-900 uppercase mt-2.5 tracking-tight font-sans">
-                {activeExam.subject} &mdash; {activeExam.category}
-              </h3>
-            </div>
+          <div className="w-full bg-white border border-slate-200/80 rounded-3xl p-4 sm:p-5 shadow-sm space-y-3 text-left my-auto">
+            
+            {/* PAPER META HEADER */}
+            <div className="border-b border-slate-100 pb-2.5 flex justify-between items-center">
+              <div>
+                <span className="text-[9px] font-black font-mono uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-200 inline-block">
+                  Cleared to Write
+                </span>
+                <h3 className="text-sm sm:text-base font-black text-slate-900 uppercase mt-0.5 tracking-tight">
+                  {activeExam.subject} &mdash; {activeExam.category}
+                </h3>
+              </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono">
-              <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl flex items-center gap-3 shadow-2xs">
-                <Clock className="w-4 h-4 text-[#7C3AED] shrink-0" />
-                <div>
-                  <span className="text-[9px] font-black text-slate-400 uppercase block">Duration</span>
-                  <p className="text-xs font-black text-slate-800 uppercase">{formatCleanDuration(activeExam.duration_minutes)}</p>
+              <div className="flex gap-2 font-mono">
+                <div className="px-2.5 py-1 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center gap-2 shadow-2xs">
+                  <Clock className="w-3.5 h-3.5 text-[#7C3AED] shrink-0" />
+                  <div>
+                    <span className="text-[8px] font-black text-slate-400 uppercase block leading-none">Time Allowed</span>
+                    <p className="text-[11px] font-black text-slate-800 uppercase leading-tight mt-0.5">{formatCleanDuration(activeExam.duration_minutes)}</p>
+                  </div>
+                </div>
+
+                <div className="px-2.5 py-1 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center gap-2 shadow-2xs">
+                  <BookOpen className="w-3.5 h-3.5 text-[#7C3AED] shrink-0" />
+                  <div>
+                    <span className="text-[8px] font-black text-slate-400 uppercase block leading-none">Format</span>
+                    <p className="text-[11px] font-black text-slate-800 uppercase leading-tight mt-0.5">CBT Module</p>
+                  </div>
                 </div>
               </div>
-              <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl flex items-center gap-3 shadow-2xs">
-                <BookOpen className="w-4 h-4 text-[#7C3AED] shrink-0" />
-                <div>
-                  <span className="text-[9px] font-black text-slate-400 uppercase block">Medium</span>
-                  <p className="text-xs font-black text-slate-800 uppercase">CBT Examination</p>
-                </div>
-              </div>
             </div>
 
-            <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-2 text-xs font-medium text-slate-600 leading-relaxed font-sans">
-              <div className="flex items-center gap-2 text-slate-900 font-black uppercase text-[10px] font-mono tracking-tight pb-1 border-b border-slate-200/60 mb-2">
+            {/* PAPER INSTRUCTIONS SECTION */}
+            {(activeExam.objective_instructions || activeExam.theory_instructions || (Array.isArray(activeExam.section_instructions) && activeExam.section_instructions.length > 0)) && (
+              <div className="space-y-2 font-sans">
+                <div className="flex items-center gap-1.5 text-slate-900 font-black uppercase text-[10px] font-mono tracking-tight pb-0.5 border-b border-slate-200/60">
+                  <Info className="w-3.5 h-3.5 text-[#7C3AED] shrink-0" />
+                  Exam Directions & Rubric Notes:
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                  {/* SECTION A: OBJECTIVE BOX */}
+                  {(activeExam.objective_instructions || sectionInstructionsGrouped.objective.length > 0) && (
+                    <div className="bg-[#FAF8FF] border border-[#E2D5F8] p-3 rounded-2xl text-xs space-y-1">
+                      <span className="text-[10px] font-black text-[#7C3AED] font-mono uppercase tracking-wider block">
+                        Section A: Objective
+                      </span>
+                      {activeExam.objective_instructions && (
+                        <div className="text-slate-800 font-medium leading-relaxed text-[11px]">
+                          <SafeMathText text={activeExam.objective_instructions} />
+                        </div>
+                      )}
+
+                      {/* Section notes specifically for Objective */}
+                      {sectionInstructionsGrouped.objective.map((sec, idx) => (
+                        <div key={idx} className="bg-amber-50/90 border border-amber-200/90 p-2 rounded-xl text-[10px] space-y-0.5 mt-1">
+                          <span className="font-black text-amber-800 font-mono uppercase tracking-wider flex items-center gap-1 text-[9px]">
+                            <FileText className="w-3 h-3 text-amber-600 shrink-0" />
+                            {sec.title || sec.section_title || 'Section Note'}:
+                          </span>
+                          <div className="text-amber-950 font-medium leading-normal">
+                            <SafeMathText text={sec.instruction || sec.text || (typeof sec === 'string' ? sec : '')} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* SECTION B: THEORY BOX */}
+                  {(activeExam.theory_instructions || sectionInstructionsGrouped.theory.length > 0) && (
+                    <div className="bg-[#F8FAFC] border border-slate-200 p-3 rounded-2xl text-xs space-y-1">
+                      <span className="text-[10px] font-black text-slate-800 font-mono uppercase tracking-wider block">
+                        Section B: Theory
+                      </span>
+                      {activeExam.theory_instructions && (
+                        <div className="text-slate-800 font-medium leading-relaxed text-[11px]">
+                          <SafeMathText text={activeExam.theory_instructions} />
+                        </div>
+                      )}
+
+                      {/* Section notes specifically for Theory */}
+                      {sectionInstructionsGrouped.theory.map((sec, idx) => (
+                        <div key={idx} className="bg-amber-50/90 border border-amber-200/90 p-2 rounded-xl text-[10px] space-y-0.5 mt-1">
+                          <span className="font-black text-amber-800 font-mono uppercase tracking-wider flex items-center gap-1 text-[9px]">
+                            <FileText className="w-3 h-3 text-amber-600 shrink-0" />
+                            {sec.title || sec.section_title || 'Section Note'}:
+                          </span>
+                          <div className="text-amber-950 font-medium leading-normal">
+                            <SafeMathText text={sec.instruction || sec.text || (typeof sec === 'string' ? sec : '')} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* UNASSIGNED / OTHER SECTION NOTES */}
+                {sectionInstructionsGrouped.other.length > 0 && (
+                  <div className="space-y-1 pt-0.5">
+                    {sectionInstructionsGrouped.other.map((sec, idx) => (
+                      <div key={idx} className="bg-amber-50/90 border border-amber-200/90 p-2 rounded-xl text-[11px] space-y-0.5">
+                        <span className="text-[9px] font-black text-amber-800 font-mono uppercase tracking-wider flex items-center gap-1">
+                          <FileText className="w-3 h-3 text-amber-600 shrink-0" />
+                          {sec.title || sec.section_title || `Note ${idx + 1}`}:
+                        </span>
+                        <div className="text-amber-950 font-medium leading-relaxed">
+                          <SafeMathText text={sec.instruction || sec.text || (typeof sec === 'string' ? sec : '')} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* SECURITY & RULES DISPLAY BOX */}
+            <div className="p-2.5 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-1 text-xs font-medium text-slate-600 font-sans">
+              <div className="flex items-center gap-1.5 text-slate-900 font-black uppercase text-[10px] font-mono tracking-tight pb-0.5 border-b border-slate-200/60 mb-0.5">
                 <ShieldAlert className="w-3.5 h-3.5 text-[#7C3AED] shrink-0" />
-                Examination Guidelines:
+                Security Rules:
               </div>
-              <p className="flex items-start gap-2 text-[11px]">
-                <span className="text-slate-900 font-black font-mono shrink-0">1.</span>
-                Starting the test enters secure mode. Do not exit fullscreen view; leaving the window logs a warning strike.
-              </p>
-              <p className="flex items-start gap-2 text-[11px]">
-                <span className="text-slate-900 font-black font-mono shrink-0">2.</span>
-                Right-clicking, copying, or pasting is disabled to protect academic integrity.
-              </p>
-              <p className="flex items-start gap-2 text-[11px] text-slate-700">
-                <span className="font-mono font-black shrink-0">3.</span>
-                <span className="font-semibold">Accumulating 3 security strikes will automatically conclude and submit your paper. Stay focused and calm!</span>
-              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[10px] leading-tight">
+                <p className="flex items-start gap-1">
+                  <span className="text-slate-900 font-black font-mono shrink-0">1.</span>
+                  <span>Fullscreen required. Exiting logs a strike.</span>
+                </p>
+                <p className="flex items-start gap-1">
+                  <span className="text-slate-900 font-black font-mono shrink-0">2.</span>
+                  <span>Copying/pasting is disabled.</span>
+                </p>
+                <p className="flex items-start gap-1 text-slate-800 font-semibold">
+                  <span className="font-mono font-black shrink-0">3.</span>
+                  <span>3 strikes automatically submits paper.</span>
+                </p>
+              </div>
             </div>
 
-            <div className="pt-2">
+            {/* CTA LAUNCH BUTTON */}
+            <div className="pt-1">
               <button 
                 onClick={handleRequestSecureExamSession}
-                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98] cursor-pointer font-mono"
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all active:scale-[0.98] cursor-pointer font-mono"
               >
                 Launch Secure Exam Workspace
               </button>
@@ -517,7 +635,8 @@ export default function StudentLobby({ student, onLaunchWorkspace, onLogoutSucce
         }}
       />
 
-      <footer className="w-full border-t border-slate-200/80 bg-white py-2.5 text-center text-[10px] font-black text-slate-400 tracking-wider font-mono uppercase px-4 shrink-0">
+      {/* FOOTER BAR */}
+      <footer className="w-full border-t border-slate-200/80 bg-white py-1.5 text-center text-[10px] font-black text-slate-400 tracking-wider font-mono uppercase px-4 shrink-0">
         Start-rite internet institutional security matrix
       </footer>
 
